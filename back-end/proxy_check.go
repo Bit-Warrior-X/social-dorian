@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -143,10 +145,7 @@ func (s *ProxyStore) handleCheckAll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-func probeProxy(p Proxy) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
-	defer cancel()
-
+func proxyHTTPClient(p Proxy, timeout time.Duration) (*http.Client, error) {
 	transport := &http.Transport{
 		Proxy:                 nil,
 		ForceAttemptHTTP2:     false,
@@ -177,23 +176,33 @@ func probeProxy(p Proxy) error {
 		}
 		dialer, err := xproxy.SOCKS5("tcp", addr, auth, &net.Dialer{Timeout: 8 * time.Second})
 		if err != nil {
-			return fmt.Errorf("socks5 setup failed: %w", err)
+			return nil, fmt.Errorf("socks5 setup failed: %w", err)
 		}
 		contextDialer, ok := dialer.(xproxy.ContextDialer)
 		if !ok {
-			return fmt.Errorf("socks5 dialer does not support deadlines")
+			return nil, fmt.Errorf("socks5 dialer does not support deadlines")
 		}
 		transport.DialContext = contextDialer.DialContext
 	default:
-		return fmt.Errorf("unsupported protocol %q", p.Protocol)
+		return nil, fmt.Errorf("unsupported protocol %q", p.Protocol)
 	}
 
-	client := &http.Client{
+	return &http.Client{
 		Transport: transport,
-		Timeout:   12 * time.Second,
+		Timeout:   timeout,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
+	}, nil
+}
+
+func probeProxy(p Proxy) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+
+	client, err := proxyHTTPClient(p, 12*time.Second)
+	if err != nil {
+		return err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, proxyCheckURL, nil)
@@ -213,4 +222,51 @@ func probeProxy(p Proxy) error {
 		return nil
 	}
 	return fmt.Errorf("unexpected status %d", res.StatusCode)
+}
+
+func dialViaProxy(p Proxy, destination string) (net.Conn, error) {
+	addr := net.JoinHostPort(p.Host, fmt.Sprintf("%d", p.Port))
+	dialer := &net.Dialer{Timeout: 8 * time.Second}
+
+	switch p.Protocol {
+	case "socks5":
+		var auth *xproxy.Auth
+		if p.Username != "" {
+			auth = &xproxy.Auth{User: p.Username, Password: p.Password}
+		}
+		socksDialer, err := xproxy.SOCKS5("tcp", addr, auth, dialer)
+		if err != nil {
+			return nil, fmt.Errorf("socks5 setup failed: %w", err)
+		}
+		return socksDialer.Dial("tcp", destination)
+	case "http", "https":
+		conn, err := dialer.Dial("tcp", addr)
+		if err != nil {
+			return nil, err
+		}
+		req := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n", destination, destination)
+		if p.Username != "" {
+			token := base64.StdEncoding.EncodeToString([]byte(p.Username + ":" + p.Password))
+			req += "Proxy-Authorization: Basic " + token + "\r\n"
+		}
+		req += "\r\n"
+		if _, err := conn.Write([]byte(req)); err != nil {
+			conn.Close()
+			return nil, err
+		}
+		br := bufio.NewReader(conn)
+		resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodConnect})
+		if err != nil {
+			conn.Close()
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			conn.Close()
+			return nil, fmt.Errorf("proxy CONNECT failed: %s", resp.Status)
+		}
+		return conn, nil
+	default:
+		return nil, fmt.Errorf("unsupported protocol %q", p.Protocol)
+	}
 }

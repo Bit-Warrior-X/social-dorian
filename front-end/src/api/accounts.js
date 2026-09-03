@@ -38,3 +38,14 @@ export function updateAccount(id, payload) {
 export function deleteAccount(id) {
   return request(`${BASE}/${id}`, { method: 'DELETE' })
 }
+
+export function openAccountSession(id) {
+  return request(`${BASE}/${id}/open`, { method: 'POST' })
+}
+
+export function closeAccountSession(sessionUrl) {
+  if (!sessionUrl) return Promise.resolve(null)
+  const match = String(sessionUrl).match(/\/api\/sessions\/([^/]+)/)
+  if (!match) return Promise.resolve(null)
+  return request(`/api/sessions/${match[1]}`, { method: 'DELETE' })
+}

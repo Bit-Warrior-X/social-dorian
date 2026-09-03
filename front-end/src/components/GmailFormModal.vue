@@ -137,6 +137,28 @@
                 placeholder="One code per line"
               />
             </div>
+            <div class="field">
+              <label for="gPinCode">PIN code</label>
+              <div class="pin-row">
+                <input
+                  id="gPinCode"
+                  v-model="form.pinCode"
+                  type="text"
+                  placeholder="Not fetched yet"
+                  autocomplete="off"
+                  :readonly="true"
+                />
+                <button
+                  class="btn btn-secondary pin-btn"
+                  type="button"
+                  :disabled="!isEdit || pinLoading || saving"
+                  @click.prevent="fetchPinCode"
+                >
+                  <i class="ti" :class="pinLoading ? 'ti-loader-2 spin' : 'ti-key'" aria-hidden="true" />
+                  {{ pinLoading ? 'Fetching…' : 'Get PIN' }}
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -201,6 +223,8 @@
 import { reactive, ref, watch } from 'vue'
 import ModalDialog from './ModalDialog.vue'
 import { GMAIL_STATUSES } from '../constants/gmails'
+import { getGmailPinCode } from '../api/gmails'
+import { useNotify } from '../composables/useNotify'
 
 const emptyForm = () => ({
   email: '',
@@ -210,6 +234,7 @@ const emptyForm = () => ({
   recoveryPhone: '',
   twofaSecret: '',
   backupCodes: '',
+  pinCode: '',
   label: '',
   status: 'active',
   notes: '',
@@ -227,6 +252,9 @@ const emit = defineEmits(['close', 'submit'])
 const form = reactive(emptyForm())
 const isEdit = ref(false)
 const fieldError = ref('')
+const pinLoading = ref(false)
+
+const { notifySuccess, notifyError } = useNotify()
 
 watch(
   () => [props.open, props.gmail],
@@ -244,6 +272,7 @@ watch(
         recoveryPhone: props.gmail.recoveryPhone || '',
         twofaSecret: props.gmail.twofaSecret || '',
         backupCodes: props.gmail.backupCodes || '',
+          pinCode: props.gmail.pinCode || '',
         label: props.gmail.label || '',
         status: props.gmail.status || 'active',
         notes: props.gmail.notes || '',
@@ -252,6 +281,32 @@ watch(
   },
   { immediate: true },
 )
+
+async function fetchPinCode() {
+  if (!props.gmail?.id) {
+    fieldError.value = 'Save this Gmail first, then fetch a PIN code.'
+    notifyError(fieldError.value)
+    return
+  }
+
+  fieldError.value = ''
+  pinLoading.value = true
+  try {
+    const res = await getGmailPinCode(props.gmail.id)
+    if (res?.pinCode) {
+      form.pinCode = res.pinCode
+    } else {
+      form.pinCode = ''
+    }
+    notifySuccess('PIN code fetched')
+  } catch (err) {
+    const message = err?.message || 'Could not fetch PIN code'
+    fieldError.value = message
+    notifyError(message)
+  } finally {
+    pinLoading.value = false
+  }
+}
 
 function submit() {
   if (!form.email.trim()) {
@@ -271,6 +326,7 @@ function submit() {
     recoveryPhone: form.recoveryPhone.trim(),
     twofaSecret: form.twofaSecret.trim(),
     backupCodes: form.backupCodes.trim(),
+    pinCode: form.pinCode.trim(),
     label: form.label.trim(),
     status: form.status,
     notes: form.notes.trim(),
@@ -456,6 +512,30 @@ textarea {
 
 .actions .ti {
   font-size: 16px;
+}
+
+.pin-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pin-row input {
+  flex: 1;
+}
+
+.pin-btn {
+  white-space: nowrap;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 860px) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -72,11 +73,12 @@ var allowedProxyModes = map[string]bool{
 }
 
 type AccountStore struct {
-	db *sql.DB
+	db      *sql.DB
+	proxies *ProxyStore
 }
 
-func newAccountStore(db *sql.DB) *AccountStore {
-	return &AccountStore{db: db}
+func newAccountStore(db *sql.DB, proxies *ProxyStore) *AccountStore {
+	return &AccountStore{db: db, proxies: proxies}
 }
 
 func (s *AccountStore) list() ([]Account, error) {
@@ -190,6 +192,10 @@ func (s *AccountStore) update(id int, input AccountInput) (Account, bool, error)
 }
 
 func (s *AccountStore) delete(id int) (bool, error) {
+	if existing := findBrowseSessionByAccount(id); existing != nil {
+		removeBrowseSession(existing.Token)
+	}
+
 	res, err := s.db.Exec(`DELETE FROM accounts WHERE id = ?`, id)
 	if err != nil {
 		return false, err
@@ -197,6 +203,9 @@ func (s *AccountStore) delete(id int) (bool, error) {
 	affected, err := res.RowsAffected()
 	if err != nil {
 		return false, err
+	}
+	if affected > 0 {
+		deleteAccountBrowserProfile(id)
 	}
 	return affected > 0, nil
 }
@@ -265,8 +274,23 @@ func (s *AccountStore) handleAccounts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *AccountStore) handleAccountByID(w http.ResponseWriter, r *http.Request) {
-	id, ok := parsePathID(w, r.URL.Path, "/api/accounts/")
+	id, action, ok := parseAccountPath(w, r.URL.Path)
 	if !ok {
+		return
+	}
+
+	if action == "open" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		result, err := s.open(id)
+		if err != nil {
+			log.Printf("open account: %v", err)
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
 		return
 	}
 
@@ -395,4 +419,34 @@ func decodeAndValidateAccount(w http.ResponseWriter, r *http.Request, creating b
 	}
 
 	return input, true
+}
+
+func parseAccountPath(w http.ResponseWriter, path string) (int, string, bool) {
+	rest := strings.TrimPrefix(path, "/api/accounts/")
+	rest = strings.Trim(rest, "/")
+	if rest == "" {
+		writeError(w, http.StatusNotFound, "not found")
+		return 0, "", false
+	}
+
+	parts := strings.Split(rest, "/")
+	id, err := strconv.Atoi(parts[0])
+	if err != nil || id < 1 {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return 0, "", false
+	}
+
+	action := ""
+	if len(parts) == 2 {
+		action = parts[1]
+		if action != "open" {
+			writeError(w, http.StatusNotFound, "not found")
+			return 0, "", false
+		}
+	} else if len(parts) > 2 {
+		writeError(w, http.StatusNotFound, "not found")
+		return 0, "", false
+	}
+
+	return id, action, true
 }

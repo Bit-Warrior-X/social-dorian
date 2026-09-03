@@ -45,7 +45,10 @@ API runs at `http://localhost:8080`
 | `POST /api/accounts`        | Connect account    |
 | `GET /api/accounts/{id}`    | Get one account    |
 | `PUT /api/accounts/{id}`    | Update account     |
-| `DELETE /api/accounts/{id}` | Disconnect account |
+| `POST /api/accounts/{id}/open` | Start remote Chromium via account proxy (persistent profile) |
+| `GET /api/sessions/{token}/vnc/*` | noVNC viewer for the remote browser |
+| `GET /api/sessions/{token}/websockify` | VNC WebSocket stream |
+| `DELETE /api/sessions/{token}` | Stop remote Chromium session |
 | `GET /api/proxies`          | List proxies       |
 | `POST /api/proxies`         | Add proxy          |
 | `GET /api/proxies/{id}`     | Get one proxy      |

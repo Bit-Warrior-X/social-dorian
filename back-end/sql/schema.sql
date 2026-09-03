@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS `gmails` (
   `recovery_phone`  VARCHAR(60)  NOT NULL DEFAULT '',
   `twofa_secret`    VARCHAR(255) NOT NULL DEFAULT '',
   `backup_codes`    TEXT         NOT NULL,
+  `pin_code`        VARCHAR(16) NOT NULL DEFAULT '',
   `label`           VARCHAR(120) NOT NULL DEFAULT '',
   `status`          ENUM('active', 'inactive', 'error') NOT NULL DEFAULT 'active',
   `notes`           TEXT         NOT NULL,

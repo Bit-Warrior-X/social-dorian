@@ -53,8 +53,8 @@
                 <th class="col-credentials">Credentials</th>
                 <th class="col-recovery">Recovery</th>
                 <th class="col-twofa">2FA</th>
+                <th class="col-pin">PIN</th>
                 <th class="col-accounts">Accounts</th>
-                <th class="col-notes">Notes</th>
                 <th class="col-status">Status</th>
                 <th class="col-actions">Actions</th>
               </tr>
@@ -100,14 +100,17 @@
                   </div>
                 </td>
                 <td>
+                  <div class="stack-cell">
+                    <div class="stack-cell__primary mono">{{ gmail.pinCode || '—' }}</div>
+                    <div class="stack-cell__sub">
+                      {{ gmail.pinCode ? 'Fetched' : 'Not fetched' }}
+                    </div>
+                  </div>
+                </td>
+                <td>
                   <span class="accounts-count" :class="{ 'is-empty': !gmail.accountCount }">
                     {{ gmail.accountCount || 0 }}
                   </span>
-                </td>
-                <td>
-                  <div class="notes-cell" :title="gmail.notes || ''">
-                    {{ gmail.notes || '—' }}
-                  </div>
                 </td>
                 <td>
                   <span class="status" :class="'status--' + gmail.status">
@@ -122,6 +125,19 @@
                     @click="openEdit(gmail)"
                   >
                     <i class="ti ti-edit" aria-hidden="true" />
+                  </button>
+                  <button
+                    class="btn btn-icon"
+                    type="button"
+                    :disabled="pinLoadingId === gmail.id"
+                    :aria-label="'Get PIN for ' + gmailDisplayName(gmail)"
+                    @click="fetchPin(gmail)"
+                  >
+                    <i
+                      class="ti"
+                      :class="pinLoadingId === gmail.id ? 'ti-loader-2 spin' : 'ti-key'"
+                      aria-hidden="true"
+                    />
                   </button>
                   <button
                     class="btn btn-icon"
@@ -168,7 +184,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import GmailFormModal from '../components/GmailFormModal.vue'
-import { createGmail, deleteGmail, listGmails, updateGmail } from '../api/gmails'
+import { createGmail, deleteGmail, getGmailPinCode, listGmails, updateGmail } from '../api/gmails'
 import { useNotify } from '../composables/useNotify'
 import { GMAIL_STATUSES, gmailDisplayName, gmailStatusLabel } from '../constants/gmails'
 
@@ -190,6 +206,7 @@ const editing = ref(null)
 const deleting = ref(null)
 const saving = ref(false)
 const formError = ref('')
+const pinLoadingId = ref(null)
 
 const needsAttention = computed(
   () => gmails.value.filter((g) => g.status === 'error' || g.status === 'inactive').length,
@@ -209,6 +226,7 @@ const filteredGmails = computed(() => {
       gmail.email,
       gmail.recoveryEmail,
       gmail.recoveryPhone,
+      gmail.pinCode,
       gmail.notes,
       gmailStatusLabel(gmail.status),
     ]
@@ -322,6 +340,26 @@ async function confirmDelete() {
     deleting.value = null
   } finally {
     saving.value = false
+  }
+}
+
+async function fetchPin(gmail) {
+  const id = gmail?.id
+  if (!id) return
+
+  pinLoadingId.value = id
+  try {
+    const res = await getGmailPinCode(id)
+    const pinCode = res?.pinCode || ''
+
+    const idx = gmails.value.findIndex((g) => g.id === id)
+    if (idx >= 0) gmails.value[idx] = { ...gmails.value[idx], pinCode }
+
+    notifySuccess(`Fetched PIN for ${gmailDisplayName(gmail)}`)
+  } catch (err) {
+    notifyError(err.message || 'Could not fetch PIN code')
+  } finally {
+    pinLoadingId.value = null
   }
 }
 
@@ -449,8 +487,8 @@ th {
 .col-credentials { width: 14%; }
 .col-recovery { width: 17%; }
 .col-twofa { width: 12%; }
+.col-pin { width: 13%; }
 .col-accounts { width: 8%; }
-.col-notes { width: 13%; }
 .col-status { width: 10%; }
 .col-actions {
   width: 9%;
@@ -536,6 +574,16 @@ tbody tr:last-child td {
 
 .actions .ti {
   font-size: 16px;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .status {

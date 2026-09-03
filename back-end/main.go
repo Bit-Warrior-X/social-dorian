@@ -27,8 +27,8 @@ func main() {
 	}
 	defer db.Close()
 
-	accountStore := newAccountStore(db)
 	proxyStore := newProxyStore(db)
+	accountStore := newAccountStore(db, proxyStore)
 	gmailStore := newGmailStore(db)
 	dashboardStore := newDashboardStore(db)
 
@@ -43,6 +43,7 @@ func main() {
 	mux.HandleFunc("/api/proxies/", proxyStore.handleProxyByID)
 	mux.HandleFunc("/api/gmails", gmailStore.handleGmails)
 	mux.HandleFunc("/api/gmails/", gmailStore.handleGmailByID)
+	mux.HandleFunc("/api/sessions/", handleBrowseSessions)
 
 	port := os.Getenv("PORT")
 	if port == "" {

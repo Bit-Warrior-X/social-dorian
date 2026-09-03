@@ -51,7 +51,7 @@ const navItems = [
 
 <style scoped>
 .sidebar {
-  width: 180px;
+  width: 200px;
   flex-shrink: 0;
   background: var(--panel);
   padding: 1rem 0.75rem;
@@ -122,7 +122,7 @@ const navItems = [
 
 @media (max-width: 800px) {
   .sidebar {
-    width: 220px;
+    width: 240px;
     height: 100%;
   }
 }

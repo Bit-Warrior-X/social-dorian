@@ -1,10 +1,10 @@
 export const PLATFORMS = [
-  { value: 'twitter', label: 'Twitter / X', icon: 'ti-brand-x' },
-  { value: 'instagram', label: 'Instagram', icon: 'ti-brand-instagram' },
-  { value: 'linkedin', label: 'LinkedIn', icon: 'ti-brand-linkedin' },
-  { value: 'facebook', label: 'Facebook', icon: 'ti-brand-facebook' },
-  { value: 'tiktok', label: 'TikTok', icon: 'ti-brand-tiktok' },
-  { value: 'youtube', label: 'YouTube', icon: 'ti-brand-youtube' },
+  { value: 'twitter', label: 'Twitter / X', icon: 'ti-brand-x', url: 'https://x.com' },
+  { value: 'instagram', label: 'Instagram', icon: 'ti-brand-instagram', url: 'https://www.instagram.com' },
+  { value: 'linkedin', label: 'LinkedIn', icon: 'ti-brand-linkedin', url: 'https://www.linkedin.com' },
+  { value: 'facebook', label: 'Facebook', icon: 'ti-brand-facebook', url: 'https://www.facebook.com' },
+  { value: 'tiktok', label: 'TikTok', icon: 'ti-brand-tiktok', url: 'https://www.tiktok.com' },
+  { value: 'youtube', label: 'YouTube', icon: 'ti-brand-youtube', url: 'https://www.youtube.com' },
 ]
 
 export const GENDERS = [
@@ -28,7 +28,11 @@ export const PROXY_MODES = [
 ]
 
 export function platformMeta(value) {
-  return PLATFORMS.find((p) => p.value === value) || { value, label: value, icon: 'ti-share' }
+  return PLATFORMS.find((p) => p.value === value) || { value, label: value, icon: 'ti-share', url: '' }
+}
+
+export function platformUrl(value) {
+  return platformMeta(value).url || ''
 }
 
 export function genderLabel(value) {

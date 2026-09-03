@@ -112,6 +112,20 @@
                   <button
                     class="btn btn-icon"
                     type="button"
+                    :disabled="openingBusy && opening?.id === account.id"
+                    :aria-label="'Open ' + accountDisplayName(account)"
+                    :title="'Open ' + platformMeta(account.platform).label + ' via proxy'"
+                    @click="openAccount(account)"
+                  >
+                    <i
+                      class="ti"
+                      :class="openingBusy && opening?.id === account.id ? 'ti-loader-2 spin' : 'ti-external-link'"
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <button
+                    class="btn btn-icon"
+                    type="button"
                     :aria-label="'Edit ' + accountDisplayName(account)"
                     @click="openEdit(account)"
                   >
@@ -143,6 +157,15 @@
       @submit="saveAccount"
     />
 
+    <OpenAccountModal
+      :open="Boolean(opening)"
+      :account="opening"
+      :session="openSession"
+      :loading="openingBusy"
+      :error="openError"
+      @close="closeOpenSession"
+    />
+
     <DeleteConfirmModal
       :open="Boolean(deleting)"
       :account="deleting"
@@ -158,7 +181,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AccountFormModal from '../components/AccountFormModal.vue'
 import DeleteConfirmModal from '../components/DeleteConfirmModal.vue'
-import { createAccount, deleteAccount, listAccounts, updateAccount } from '../api/accounts'
+import OpenAccountModal from '../components/OpenAccountModal.vue'
+import { createAccount, closeAccountSession, deleteAccount, listAccounts, openAccountSession, updateAccount } from '../api/accounts'
 import { listProxies } from '../api/proxies'
 import { useNotify } from '../composables/useNotify'
 import {
@@ -192,6 +216,10 @@ const editing = ref(null)
 const deleting = ref(null)
 const saving = ref(false)
 const formError = ref('')
+const opening = ref(null)
+const openSession = ref(null)
+const openingBusy = ref(false)
+const openError = ref('')
 
 const needsAttention = computed(
   () => accounts.value.filter((a) => a.status === 'expired' || a.status === 'error').length,
@@ -258,6 +286,39 @@ async function loadAccounts() {
     notifyError(message)
   } finally {
     loading.value = false
+  }
+}
+
+async function openAccount(account) {
+  opening.value = account
+  openSession.value = null
+  openError.value = ''
+  openingBusy.value = true
+  try {
+    openSession.value = await openAccountSession(account.id)
+    notifySuccess(
+      `Opened ${platformMeta(account.platform).label} via ${openSession.value.exitIp || openSession.value.proxy?.host}`,
+    )
+  } catch (err) {
+    openError.value = err.message || 'Could not open this account'
+    notifyError(openError.value)
+  } finally {
+    openingBusy.value = false
+  }
+}
+
+async function closeOpenSession() {
+  const sessionUrl = openSession.value?.sessionUrl
+  opening.value = null
+  openSession.value = null
+  openError.value = ''
+  openingBusy.value = false
+  if (sessionUrl) {
+    try {
+      await closeAccountSession(sessionUrl)
+    } catch (_) {
+      // Session cleanup is best-effort; TTL also reaps abandoned browsers.
+    }
   }
 }
 
@@ -453,7 +514,7 @@ th {
 .col-proxy { width: 16%; }
 .col-connected { width: 14%; }
 .col-actions {
-  width: 12%;
+  width: 14%;
   text-align: right;
 }
 
@@ -555,6 +616,16 @@ tbody tr:last-child td {
 
 .actions .ti {
   font-size: 16px;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .status {

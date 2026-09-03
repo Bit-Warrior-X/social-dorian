@@ -38,3 +38,7 @@ export function updateGmail(id, payload) {
 export function deleteGmail(id) {
   return request(`${BASE}/${id}`, { method: 'DELETE' })
 }
+
+export function getGmailPinCode(id) {
+  return request(`${BASE}/${id}/pin-code`, { method: 'POST' })
+}

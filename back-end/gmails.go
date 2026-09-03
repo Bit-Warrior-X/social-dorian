@@ -1,11 +1,14 @@
 package main
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"log"
+	"math/big"
 	"net/http"
 	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,6 +22,7 @@ type Gmail struct {
 	RecoveryPhone string `json:"recoveryPhone"`
 	TwofaSecret   string `json:"twofaSecret"`
 	BackupCodes   string `json:"backupCodes"`
+	PinCode       string `json:"pinCode"`
 	Label         string `json:"label"`
 	Status        string `json:"status"`
 	Notes         string `json:"notes"`
@@ -35,6 +39,7 @@ type GmailInput struct {
 	RecoveryPhone string `json:"recoveryPhone"`
 	TwofaSecret   string `json:"twofaSecret"`
 	BackupCodes   string `json:"backupCodes"`
+	PinCode       string `json:"pinCode"`
 	Label         string `json:"label"`
 	Status        string `json:"status"`
 	Notes         string `json:"notes"`
@@ -50,6 +55,10 @@ type GmailStore struct {
 	db *sql.DB
 }
 
+type PinCodeResponse struct {
+	PinCode string `json:"pinCode"`
+}
+
 func newGmailStore(db *sql.DB) *GmailStore {
 	return &GmailStore{db: db}
 }
@@ -57,13 +66,13 @@ func newGmailStore(db *sql.DB) *GmailStore {
 func (s *GmailStore) list() ([]Gmail, error) {
 	rows, err := s.db.Query(`
 		SELECT g.id, g.email, g.password, g.app_password, g.recovery_email, g.recovery_phone,
-		       g.twofa_secret, g.backup_codes, g.label,
+		       g.twofa_secret, g.backup_codes, g.pin_code, g.label,
 		       g.status, g.notes, g.created_at, g.updated_at,
 		       COUNT(a.id) AS account_count
 		FROM gmails g
 		LEFT JOIN accounts a ON LOWER(a.email) = LOWER(g.email)
 		GROUP BY g.id, g.email, g.password, g.app_password, g.recovery_email, g.recovery_phone,
-		         g.twofa_secret, g.backup_codes, g.label,
+		         g.twofa_secret, g.backup_codes, g.pin_code, g.label,
 		         g.status, g.notes, g.created_at, g.updated_at
 		ORDER BY g.id ASC`)
 	if err != nil {
@@ -85,14 +94,14 @@ func (s *GmailStore) list() ([]Gmail, error) {
 func (s *GmailStore) get(id int) (Gmail, bool, error) {
 	row := s.db.QueryRow(`
 		SELECT g.id, g.email, g.password, g.app_password, g.recovery_email, g.recovery_phone,
-		       g.twofa_secret, g.backup_codes, g.label,
+		       g.twofa_secret, g.backup_codes, g.pin_code, g.label,
 		       g.status, g.notes, g.created_at, g.updated_at,
 		       COUNT(a.id) AS account_count
 		FROM gmails g
 		LEFT JOIN accounts a ON LOWER(a.email) = LOWER(g.email)
 		WHERE g.id = ?
 		GROUP BY g.id, g.email, g.password, g.app_password, g.recovery_email, g.recovery_phone,
-		         g.twofa_secret, g.backup_codes, g.label,
+		         g.twofa_secret, g.backup_codes, g.pin_code, g.label,
 		         g.status, g.notes, g.created_at, g.updated_at`, id)
 
 	item, err := scanGmail(row)
@@ -108,8 +117,8 @@ func (s *GmailStore) get(id int) (Gmail, bool, error) {
 func (s *GmailStore) create(input GmailInput) (Gmail, error) {
 	res, err := s.db.Exec(`
 		INSERT INTO gmails (email, password, app_password, recovery_email, recovery_phone,
-		  twofa_secret, backup_codes, label, status, notes)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  twofa_secret, backup_codes, pin_code, label, status, notes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.Email,
 		input.Password,
 		input.AppPassword,
@@ -117,6 +126,7 @@ func (s *GmailStore) create(input GmailInput) (Gmail, error) {
 		input.RecoveryPhone,
 		input.TwofaSecret,
 		input.BackupCodes,
+		input.PinCode,
 		input.Label,
 		input.Status,
 		input.Notes,
@@ -142,7 +152,7 @@ func (s *GmailStore) update(id int, input GmailInput) (Gmail, bool, error) {
 	_, err := s.db.Exec(`
 		UPDATE gmails SET
 			email = ?, password = ?, app_password = ?, recovery_email = ?, recovery_phone = ?,
-			twofa_secret = ?, backup_codes = ?,
+			twofa_secret = ?, backup_codes = ?, pin_code = ?,
 			label = ?, status = ?, notes = ?
 		WHERE id = ?`,
 		input.Email,
@@ -152,6 +162,7 @@ func (s *GmailStore) update(id int, input GmailInput) (Gmail, bool, error) {
 		input.RecoveryPhone,
 		input.TwofaSecret,
 		input.BackupCodes,
+		input.PinCode,
 		input.Label,
 		input.Status,
 		input.Notes,
@@ -195,6 +206,7 @@ func scanGmail(row gmailScanner) (Gmail, error) {
 		&item.RecoveryPhone,
 		&item.TwofaSecret,
 		&item.BackupCodes,
+		&item.PinCode,
 		&item.Label,
 		&item.Status,
 		&item.Notes,
@@ -242,8 +254,32 @@ func (s *GmailStore) handleGmails(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *GmailStore) handleGmailByID(w http.ResponseWriter, r *http.Request) {
-	id, ok := parsePathID(w, r.URL.Path, "/api/gmails/")
+	id, action, ok := parseGmailPath(w, r.URL.Path, "/api/gmails/")
 	if !ok {
+		return
+	}
+
+	if action == "pin-code" {
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+
+		pin, err := generatePinCode(6)
+		if err != nil {
+			log.Printf("generate pin code: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to generate pin code")
+			return
+		}
+
+		// Persist the latest pin for auditability / later retrieval.
+		if _, err := s.db.Exec(`UPDATE gmails SET pin_code = ? WHERE id = ?`, pin, id); err != nil {
+			log.Printf("update pin code: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to update pin code")
+			return
+		}
+
+		writeJSON(w, http.StatusOK, PinCodeResponse{PinCode: pin})
 		return
 	}
 
@@ -311,6 +347,7 @@ func decodeGmailInput(w http.ResponseWriter, r *http.Request) (GmailInput, bool)
 	input.RecoveryPhone = strings.TrimSpace(input.RecoveryPhone)
 	input.TwofaSecret = strings.TrimSpace(input.TwofaSecret)
 	input.BackupCodes = strings.TrimSpace(input.BackupCodes)
+	input.PinCode = strings.TrimSpace(input.PinCode)
 	input.Label = strings.TrimSpace(input.Label)
 	input.Status = strings.ToLower(strings.TrimSpace(input.Status))
 	input.Notes = strings.TrimSpace(input.Notes)
@@ -344,6 +381,19 @@ func decodeGmailInput(w http.ResponseWriter, r *http.Request) (GmailInput, bool)
 		input.Label = input.Email
 	}
 
+	if input.PinCode != "" {
+		if len(input.PinCode) < 4 || len(input.PinCode) > 12 {
+			writeError(w, http.StatusBadRequest, "pinCode must be 4-12 digits")
+			return GmailInput{}, false
+		}
+		for _, r := range input.PinCode {
+			if r < '0' || r > '9' {
+				writeError(w, http.StatusBadRequest, "pinCode must contain digits only")
+				return GmailInput{}, false
+			}
+		}
+	}
+
 	return input, true
 }
 
@@ -353,4 +403,53 @@ func isDuplicateKey(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique")
+}
+
+func parseGmailPath(w http.ResponseWriter, path, prefix string) (int, string, bool) {
+	rest := strings.TrimPrefix(path, prefix)
+	rest = strings.Trim(rest, "/")
+	if rest == "" {
+		writeError(w, http.StatusNotFound, "not found")
+		return 0, "", false
+	}
+
+	parts := strings.Split(rest, "/")
+	id, err := strconv.Atoi(parts[0])
+	if err != nil || id < 1 {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return 0, "", false
+	}
+
+	action := ""
+	if len(parts) == 2 {
+		action = parts[1]
+		if action != "pin-code" {
+			writeError(w, http.StatusNotFound, "not found")
+			return 0, "", false
+		}
+	} else if len(parts) > 2 {
+		writeError(w, http.StatusNotFound, "not found")
+		return 0, "", false
+	}
+
+	return id, action, true
+}
+
+func generatePinCode(length int) (string, error) {
+	if length < 4 {
+		return "", nil
+	}
+	if length > 12 {
+		length = 12
+	}
+
+	buf := make([]byte, length)
+	for i := 0; i < length; i++ {
+		n, err := rand.Int(rand.Reader, big.NewInt(10))
+		if err != nil {
+			return "", err
+		}
+		buf[i] = byte('0' + n.Int64())
+	}
+	return string(buf), nil
 }
