@@ -1,0 +1,94 @@
+package main
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"os"
+)
+
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+type HealthResponse struct {
+	Status  string `json:"status"`
+	Service string `json:"service"`
+}
+
+func main() {
+	if err := loadDotEnv(".env"); err != nil {
+		log.Fatalf("failed to load .env: %v", err)
+	}
+
+	db, err := openDB()
+	if err != nil {
+		log.Fatalf("database connection failed: %v", err)
+	}
+	defer db.Close()
+
+	accountStore := newAccountStore(db)
+	proxyStore := newProxyStore(db)
+	gmailStore := newGmailStore(db)
+	dashboardStore := newDashboardStore(db)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/health", handleHealth)
+	mux.HandleFunc("/api/geo/country", handleGeoCountry)
+	mux.HandleFunc("/api/dashboard", dashboardStore.handleDashboard)
+	mux.HandleFunc("/api/accounts", accountStore.handleAccounts)
+	mux.HandleFunc("/api/accounts/", accountStore.handleAccountByID)
+	mux.HandleFunc("/api/proxies/check-all", proxyStore.handleCheckAll)
+	mux.HandleFunc("/api/proxies", proxyStore.handleProxies)
+	mux.HandleFunc("/api/proxies/", proxyStore.handleProxyByID)
+	mux.HandleFunc("/api/gmails", gmailStore.handleGmails)
+	mux.HandleFunc("/api/gmails/", gmailStore.handleGmailByID)
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Social Dorian API listening on :%s", port)
+	if err := http.ListenAndServe(":"+port, corsMiddleware(mux)); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, HealthResponse{
+		Status:  "ok",
+		Service: "social-dorian-api",
+	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("failed to encode response: %v", err)
+	}
+}
+
+func writeError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, ErrorResponse{Error: message})
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}

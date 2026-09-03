@@ -1,0 +1,9 @@
+# Binaries
+socialdorian
+*.exe
+
+# Local secrets
+.env
+
+# Go workspace
+go.work

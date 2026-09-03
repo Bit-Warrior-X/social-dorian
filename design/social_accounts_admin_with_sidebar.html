@@ -1,0 +1,290 @@
+<h2 class="sr-only">Prototype admin page with a left sidebar for managing an organization's connected social media accounts</h2>
+<div style="display:flex;border:0.5px solid var(--border);border-radius:12px;overflow:hidden;min-height:560px;">
+
+  <div style="width:180px;flex-shrink:0;background:var(--surface-1);padding:1rem 0.75rem;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:8px;padding:0 6px 1rem;margin-bottom:0.5rem;border-bottom:0.5px solid var(--border);">
+      <i class="ti ti-share-2" style="font-size:20px;color:var(--text-accent);" aria-hidden="true"></i>
+      <span style="font-weight:500;font-size:14px;">Socialdesk</span>
+    </div>
+    <nav style="display:flex;flex-direction:column;gap:2px;flex:1;">
+      <a href="#" data-nav="dashboard" class="navitem" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);font-size:13px;color:var(--text-secondary);text-decoration:none;">
+        <i class="ti ti-layout-dashboard" style="font-size:16px;" aria-hidden="true"></i>Dashboard</a>
+      <a href="#" data-nav="accounts" class="navitem active" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);font-size:13px;text-decoration:none;background:var(--fill-ghost-selected);color:var(--text-primary);font-weight:500;">
+        <i class="ti ti-share" style="font-size:16px;" aria-hidden="true"></i>Social accounts</a>
+      <a href="#" data-nav="posts" class="navitem" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);font-size:13px;color:var(--text-secondary);text-decoration:none;">
+        <i class="ti ti-calendar" style="font-size:16px;" aria-hidden="true"></i>Posts</a>
+      <a href="#" data-nav="orgs" class="navitem" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);font-size:13px;color:var(--text-secondary);text-decoration:none;">
+        <i class="ti ti-building" style="font-size:16px;" aria-hidden="true"></i>Organization</a>
+      <a href="#" data-nav="members" class="navitem" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);font-size:13px;color:var(--text-secondary);text-decoration:none;">
+        <i class="ti ti-users" style="font-size:16px;" aria-hidden="true"></i>Members</a>
+      <a href="#" data-nav="history" class="navitem" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);font-size:13px;color:var(--text-secondary);text-decoration:none;">
+        <i class="ti ti-history" style="font-size:16px;" aria-hidden="true"></i>Activity log</a>
+    </nav>
+    <div style="border-top:0.5px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:2px;">
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);font-size:13px;color:var(--text-secondary);text-decoration:none;">
+        <i class="ti ti-settings" style="font-size:16px;" aria-hidden="true"></i>Settings</a>
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--radius);font-size:13px;color:var(--text-secondary);text-decoration:none;">
+        <i class="ti ti-logout" style="font-size:16px;" aria-hidden="true"></i>Log out</a>
+    </div>
+  </div>
+
+  <div style="flex:1;min-width:0;background:var(--surface-2);padding:1.25rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h1 style="margin:0;">Social accounts</h1>
+        <p style="margin:4px 0 0;font-size:13px;color:var(--text-secondary);">Accounts connected for this organization</p>
+      </div>
+      <button id="openCreate"><i class="ti ti-plus" style="font-size:16px;vertical-align:-2px;margin-right:6px;" aria-hidden="true"></i>Connect account</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:1rem;">
+      <div style="background:var(--surface-1);border-radius:var(--radius);padding:1rem;">
+        <div style="font-size:13px;color:var(--text-secondary);">Connected</div>
+        <div id="statTotal" style="font-size:24px;font-weight:500;">4</div>
+      </div>
+      <div style="background:var(--surface-1);border-radius:var(--radius);padding:1rem;">
+        <div style="font-size:13px;color:var(--text-secondary);">Active</div>
+        <div id="statActive" style="font-size:24px;font-weight:500;color:var(--text-success);">2</div>
+      </div>
+      <div style="background:var(--surface-1);border-radius:var(--radius);padding:1rem;">
+        <div style="font-size:13px;color:var(--text-secondary);">Needs attention</div>
+        <div id="statAttention" style="font-size:24px;font-weight:500;color:var(--text-warning);">2</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap;">
+      <input id="search" type="text" placeholder="Search accounts" style="flex:1;min-width:140px;"/>
+      <select id="platformFilter" style="width:140px;">
+        <option value="">All platforms</option>
+        <option value="twitter">Twitter / X</option>
+        <option value="instagram">Instagram</option>
+        <option value="linkedin">LinkedIn</option>
+        <option value="facebook">Facebook</option>
+        <option value="tiktok">TikTok</option>
+        <option value="youtube">YouTube</option>
+      </select>
+      <select id="statusFilter" style="width:120px;">
+        <option value="">All statuses</option>
+        <option value="active">Active</option>
+        <option value="expired">Expired</option>
+        <option value="error">Error</option>
+        <option value="revoked">Revoked</option>
+      </select>
+    </div>
+
+    <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:12px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;font-size:14px;table-layout:fixed;">
+        <thead>
+          <tr style="border-bottom:0.5px solid var(--border);">
+            <th style="text-align:left;padding:10px 12px;font-weight:500;color:var(--text-secondary);width:32%;">Account</th>
+            <th style="text-align:left;padding:10px 12px;font-weight:500;color:var(--text-secondary);width:18%;">Type</th>
+            <th style="text-align:left;padding:10px 12px;font-weight:500;color:var(--text-secondary);width:14%;">Status</th>
+            <th style="text-align:left;padding:10px 12px;font-weight:500;color:var(--text-secondary);width:20%;">Connected by</th>
+            <th style="text-align:right;padding:10px 12px;font-weight:500;color:var(--text-secondary);width:16%;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <p id="emptyState" style="display:none;text-align:center;padding:2rem 1rem;color:var(--text-secondary);font-size:14px;margin:0;">No accounts match your filters.</p>
+    </div>
+  </div>
+</div>
+
+<div id="overlay" style="display:none;min-height:400px;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;border-radius:12px;margin-top:1rem;">
+  <div style="background:var(--surface-2);border-radius:12px;padding:1.25rem;width:340px;max-width:90%;">
+    <h2 id="modalTitle" style="margin:0 0 1rem;">Connect account</h2>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div>
+        <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:4px;">Platform</label>
+        <select id="fPlatform" style="width:100%;">
+          <option value="twitter">Twitter / X</option>
+          <option value="instagram">Instagram</option>
+          <option value="linkedin">LinkedIn</option>
+          <option value="facebook">Facebook</option>
+          <option value="tiktok">TikTok</option>
+          <option value="youtube">YouTube</option>
+        </select>
+      </div>
+      <div>
+        <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:4px;">Handle or page name</label>
+        <input id="fHandle" type="text" placeholder="@acmehq" style="width:100%;"/>
+        <span id="fHandleError" style="display:none;font-size:13px;color:var(--text-danger);"></span>
+      </div>
+      <div>
+        <label style="font-size:13px;color:var(--text-secondary);display:block;margin-bottom:4px;">Account type</label>
+        <select id="fType" style="width:100%;">
+          <option value="business_page">Business page</option>
+          <option value="company_page">Company page</option>
+          <option value="personal">Personal</option>
+        </select>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+        <button id="cancelModal">Cancel</button>
+        <button id="saveModal"><i class="ti ti-check" style="font-size:16px;vertical-align:-2px;margin-right:6px;" aria-hidden="true"></i><span id="saveModalLabel">Connect</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="deleteOverlay" style="display:none;min-height:400px;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;border-radius:12px;margin-top:1rem;">
+  <div style="background:var(--surface-2);border-radius:12px;padding:1.25rem;width:320px;max-width:90%;">
+    <h2 style="margin:0 0 8px;">Disconnect account</h2>
+    <p id="deleteMessage" style="font-size:14px;color:var(--text-secondary);margin:0 0 1rem;line-height:1.6;"></p>
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button id="cancelDelete">Cancel</button>
+      <button id="confirmDelete" style="border-color:var(--border-danger);color:var(--text-danger);">Disconnect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PLATFORM_META = {
+  twitter: { label: 'Twitter / X', icon: 'ti-brand-x' },
+  instagram: { label: 'Instagram', icon: 'ti-brand-instagram' },
+  linkedin: { label: 'LinkedIn', icon: 'ti-brand-linkedin' },
+  facebook: { label: 'Facebook', icon: 'ti-brand-facebook' },
+  tiktok: { label: 'TikTok', icon: 'ti-brand-tiktok' },
+  youtube: { label: 'YouTube', icon: 'ti-brand-youtube' }
+};
+const STATUS_META = {
+  active: { label: 'Active', bg: 'var(--bg-success)', fg: 'var(--text-success)' },
+  expired: { label: 'Expired', bg: 'var(--bg-warning)', fg: 'var(--text-warning)' },
+  error: { label: 'Error', bg: 'var(--bg-danger)', fg: 'var(--text-danger)' },
+  revoked: { label: 'Revoked', bg: 'var(--surface-2)', fg: 'var(--text-muted)' }
+};
+const TYPE_LABEL = { business_page: 'Business page', company_page: 'Company page', personal: 'Personal' };
+
+let accounts = [
+  { id: 1, platform: 'twitter', handle: '@acmehq', type: 'business_page', status: 'active', connectedBy: 'Jane Ortiz', connectedAt: '2026-01-12' },
+  { id: 2, platform: 'instagram', handle: 'acme.official', type: 'business_page', status: 'error', connectedBy: 'Dan Kim', connectedAt: '2026-02-03' },
+  { id: 3, platform: 'linkedin', handle: 'Acme Inc.', type: 'company_page', status: 'active', connectedBy: 'Jane Ortiz', connectedAt: '2026-03-21' },
+  { id: 4, platform: 'tiktok', handle: '@acme.social', type: 'business_page', status: 'expired', connectedBy: 'Priya Shah', connectedAt: '2025-11-08' }
+];
+let editingId = null;
+let deletingId = null;
+let nextId = 5;
+
+function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+function updateStats(){
+  document.getElementById('statTotal').textContent = accounts.length;
+  document.getElementById('statActive').textContent = accounts.filter(a => a.status === 'active').length;
+  document.getElementById('statAttention').textContent = accounts.filter(a => a.status === 'expired' || a.status === 'error').length;
+}
+
+function render(){
+  const q = document.getElementById('search').value.trim().toLowerCase();
+  const pf = document.getElementById('platformFilter').value;
+  const sf = document.getElementById('statusFilter').value;
+  const filtered = accounts.filter(a => {
+    if (pf && a.platform !== pf) return false;
+    if (sf && a.status !== sf) return false;
+    if (q && !a.handle.toLowerCase().includes(q) && !PLATFORM_META[a.platform].label.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const rows = document.getElementById('rows');
+  const empty = document.getElementById('emptyState');
+  rows.innerHTML = '';
+  empty.style.display = filtered.length ? 'none' : 'block';
+  filtered.forEach(a => {
+    const pm = PLATFORM_META[a.platform];
+    const sm = STATUS_META[a.status];
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '0.5px solid var(--border)';
+    tr.innerHTML = `
+      <td style="padding:10px 12px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <i class="ti ${pm.icon}" style="font-size:20px;color:var(--text-secondary);" aria-hidden="true"></i>
+          <div>
+            <div style="font-weight:500;">${esc(a.handle)}</div>
+            <div style="font-size:12px;color:var(--text-muted);">${pm.label}</div>
+          </div>
+        </div>
+      </td>
+      <td style="padding:10px 12px;color:var(--text-secondary);">${TYPE_LABEL[a.type]}</td>
+      <td style="padding:10px 12px;"><span style="background:${sm.bg};color:${sm.fg};font-size:12px;padding:3px 10px;border-radius:var(--radius);">${sm.label}</span></td>
+      <td style="padding:10px 12px;color:var(--text-secondary);">
+        <div>${esc(a.connectedBy)}</div>
+        <div style="font-size:12px;color:var(--text-muted);">${a.connectedAt}</div>
+      </td>
+      <td style="padding:10px 12px;text-align:right;white-space:nowrap;">
+        <button data-edit="${a.id}" aria-label="Edit ${esc(a.handle)}" style="padding:4px 8px;"><i class="ti ti-edit" style="font-size:16px;" aria-hidden="true"></i></button>
+        <button data-del="${a.id}" aria-label="Disconnect ${esc(a.handle)}" style="padding:4px 8px;"><i class="ti ti-trash" style="font-size:16px;" aria-hidden="true"></i></button>
+      </td>`;
+    rows.appendChild(tr);
+  });
+  rows.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openEdit(parseInt(b.dataset.edit))));
+  rows.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => openDelete(parseInt(b.dataset.del))));
+  updateStats();
+}
+
+function openCreate(){
+  editingId = null;
+  document.getElementById('modalTitle').textContent = 'Connect account';
+  document.getElementById('saveModalLabel').textContent = 'Connect';
+  document.getElementById('fPlatform').value = 'twitter';
+  document.getElementById('fHandle').value = '';
+  document.getElementById('fType').value = 'business_page';
+  document.getElementById('fHandleError').style.display = 'none';
+  document.getElementById('overlay').style.display = 'flex';
+}
+function openEdit(id){
+  const a = accounts.find(x => x.id === id);
+  if (!a) return;
+  editingId = id;
+  document.getElementById('modalTitle').textContent = 'Edit account';
+  document.getElementById('saveModalLabel').textContent = 'Save changes';
+  document.getElementById('fPlatform').value = a.platform;
+  document.getElementById('fHandle').value = a.handle;
+  document.getElementById('fType').value = a.type;
+  document.getElementById('fHandleError').style.display = 'none';
+  document.getElementById('overlay').style.display = 'flex';
+}
+function closeModal(){ document.getElementById('overlay').style.display = 'none'; }
+
+function saveModal(){
+  const handle = document.getElementById('fHandle').value.trim();
+  const errEl = document.getElementById('fHandleError');
+  if (!handle){
+    errEl.textContent = 'Enter a handle or page name first';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  const platform = document.getElementById('fPlatform').value;
+  const type = document.getElementById('fType').value;
+  if (editingId){
+    const a = accounts.find(x => x.id === editingId);
+    a.platform = platform; a.handle = handle; a.type = type;
+  } else {
+    accounts.push({ id: nextId++, platform, handle, type, status: 'active', connectedBy: 'You', connectedAt: new Date().toISOString().slice(0,10) });
+  }
+  closeModal();
+  render();
+}
+
+function openDelete(id){
+  const a = accounts.find(x => x.id === id);
+  if (!a) return;
+  deletingId = id;
+  document.getElementById('deleteMessage').textContent = `This disconnects ${a.handle} and revokes its access. This can't be undone.`;
+  document.getElementById('deleteOverlay').style.display = 'flex';
+}
+function closeDelete(){ document.getElementById('deleteOverlay').style.display = 'none'; deletingId = null; }
+function confirmDelete(){
+  accounts = accounts.filter(a => a.id !== deletingId);
+  closeDelete();
+  render();
+}
+
+document.getElementById('openCreate').addEventListener('click', openCreate);
+document.getElementById('cancelModal').addEventListener('click', closeModal);
+document.getElementById('saveModal').addEventListener('click', saveModal);
+document.getElementById('cancelDelete').addEventListener('click', closeDelete);
+document.getElementById('confirmDelete').addEventListener('click', confirmDelete);
+document.getElementById('search').addEventListener('input', render);
+document.getElementById('platformFilter').addEventListener('change', render);
+document.getElementById('statusFilter').addEventListener('change', render);
+
+render();
+</script>

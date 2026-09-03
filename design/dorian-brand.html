@@ -1,0 +1,213 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dorian &mdash; Brand identity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0F0D;
+    --panel:#121815;
+    --panel-raised:#171F1B;
+    --hairline:#232D28;
+    --hairline-strong:#333F38;
+    --text:#E8EDE9;
+    --text-dim:#8B978F;
+    --text-faint:#5B6560;
+
+    --viper-400:#3FBD85;
+    --viper-500:#2E9E6C;
+    --viper-700:#1F6E4A;
+    --viper-dim:#17352A;
+
+    --gold-500:#C9A24A;
+    --gold-dim:#3A2E14;
+
+    --success:#4FBD7A;
+    --l4:#5B9DF0;
+    --l7:#B08CF0;
+    --warn:#E0A83F;
+    --danger:#E15241;
+
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+    --sans:'Inter', system-ui, sans-serif;
+    --radius:8px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:var(--sans); -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1040px; margin:0 auto; padding:56px 32px 90px;}
+  h1,h2,h3{margin:0; font-weight:600;}
+  p{margin:0; color:var(--text-dim); line-height:1.6;}
+  .num{font-family:var(--mono); font-variant-numeric:tabular-nums;}
+
+  .top{display:flex; align-items:center; gap:12px; margin-bottom:56px;}
+  .top svg{width:36px; height:36px; flex:none;}
+  .top .wordmark{font-family:var(--mono); font-size:20px; font-weight:600; letter-spacing:0.02em;}
+
+  section{margin-bottom:64px;}
+  .section-head{margin-bottom:22px;}
+  .section-head .kicker{font-family:var(--mono); font-size:11px; color:var(--viper-400); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:8px; display:block;}
+  .section-head h2{font-size:22px;}
+  .section-head p{margin-top:8px; max-width:660px; font-size:14.5px;}
+
+  /* Favicon proof */
+  .favicon-row{display:flex; align-items:flex-end; gap:28px; flex-wrap:wrap;}
+  .favicon-item{text-align:center;}
+  .tab-mock{background:var(--panel); border:0.5px solid var(--hairline); border-radius:8px 8px 0 0; padding:8px 14px 7px; display:inline-flex; align-items:center; gap:6px;}
+  .tab-mock .tab-title{font-size:11px; color:var(--text-dim); font-family:var(--sans);}
+  .favicon-item .size-label{font-family:var(--mono); font-size:10.5px; color:var(--text-faint); margin-top:8px;}
+  .fav-16{width:16px;height:16px;} .fav-24{width:24px;height:24px;} .fav-32{width:32px;height:32px;} .fav-48{width:48px;height:48px;}
+
+  /* Mark showcase */
+  .mark-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px;}
+  .mark-card{background:var(--panel); border:0.5px solid var(--hairline); border-radius:12px; padding:28px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; min-height:170px;}
+  .mark-card.on-light{background:#F4F1E9;}
+  .mark-card svg{width:64px; height:64px;}
+  .mark-card .cap{font-family:var(--mono); font-size:11px; color:var(--text-faint); text-align:center;}
+  .mark-card.on-light .cap{color:#5B6560;}
+  .mono-mark{color:var(--viper-500); --icon-pupil-color:#0B0F0D;}
+  .mono-mark-light{color:#1F6E4A; --icon-pupil-color:#F4F1E9;}
+
+  .rationale{margin-top:20px; font-size:13.5px; line-height:1.7; max-width:700px;}
+  .rationale strong{color:var(--text);}
+  .rationale + .rationale{margin-top:12px;}
+
+  /* Palette */
+  .swatch-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:14px;}
+  .swatch{border-radius:12px; overflow:hidden; border:0.5px solid var(--hairline);}
+  .swatch-color{height:88px;}
+  .swatch-info{background:var(--panel); padding:12px 14px;}
+  .swatch-info .name{font-size:13px; font-weight:600;}
+  .swatch-info .hex{font-family:var(--mono); font-size:12px; color:var(--text-dim); margin-top:2px;}
+  .swatch-info .use{font-size:11.5px; color:var(--text-faint); margin-top:6px; line-height:1.4;}
+
+  .group-label{font-family:var(--mono); font-size:10.5px; color:var(--text-faint); letter-spacing:0.08em; text-transform:uppercase; margin:28px 0 12px;}
+  .group-label:first-child{margin-top:0;}
+
+  /* Applied examples */
+  .example-row{display:flex; gap:14px; align-items:center; flex-wrap:wrap; background:var(--panel); border:0.5px solid var(--hairline); border-radius:12px; padding:22px;}
+  .btn-primary{background:var(--viper-500); color:#08120E; border:none; font-family:var(--sans); font-weight:600; font-size:13.5px; padding:10px 18px; border-radius:var(--radius); cursor:pointer;}
+  .btn-secondary{background:transparent; color:var(--gold-500); border:0.5px solid var(--gold-500); font-family:var(--sans); font-weight:600; font-size:13.5px; padding:10px 18px; border-radius:var(--radius); cursor:pointer;}
+  .pill{font-family:var(--mono); font-size:11.5px; padding:5px 11px; border-radius:20px;}
+  .pill.ok{background:var(--viper-dim); color:var(--viper-400);}
+  .pill.warn{background:var(--gold-dim); color:var(--gold-500);}
+  .pill.danger{background:rgba(225,82,65,0.15); color:var(--danger);}
+  .mini-card{background:var(--panel-raised); border:0.5px solid var(--hairline); border-radius:10px; padding:14px 16px; min-width:150px;}
+  .mini-card .l{font-size:11px; color:var(--text-faint); font-family:var(--mono);}
+  .mini-card .v{font-family:var(--mono); font-size:19px; font-weight:600; color:var(--viper-400); margin-top:4px;}
+
+  @media (max-width:760px){
+    .mark-grid{grid-template-columns:repeat(2,1fr);}
+    .swatch-grid{grid-template-columns:repeat(2,1fr);}
+    .wrap{padding:36px 18px 60px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <svg viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#2E9E6C"/><path d="M9,50 S27,22 50,22 S91,50 91,50 S73,78 50,78 S9,50 9,50 Z" fill="#0B0F0D"/><rect x="45" y="32" width="10" height="36" rx="5" fill="#C9A24A"/></svg>
+    <span class="wordmark">DORIAN</span>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <span class="kicker">Favicon proof</span>
+      <h2>Two flat shapes, holds up at any size</h2>
+      <p>The mark is an eye and its pupil &mdash; nothing tapered, nothing with more than two colors. That's what makes it survive the browser tab, where most detailed marks turn into a gray smudge.</p>
+    </div>
+    <div class="favicon-row">
+      <div class="favicon-item">
+        <div class="tab-mock"><svg class="fav-16" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#2E9E6C"/><path d="M9,50 S27,22 50,22 S91,50 91,50 S73,78 50,78 S9,50 9,50 Z" fill="#0B0F0D"/><rect x="45" y="32" width="10" height="36" rx="5" fill="#C9A24A"/></svg><span class="tab-title">Dorian</span></div>
+        <div class="size-label">16px</div>
+      </div>
+      <div class="favicon-item">
+        <div class="tab-mock"><svg class="fav-24" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#2E9E6C"/><path d="M9,50 S27,22 50,22 S91,50 91,50 S73,78 50,78 S9,50 9,50 Z" fill="#0B0F0D"/><rect x="45" y="32" width="10" height="36" rx="5" fill="#C9A24A"/></svg><span class="tab-title">Dorian</span></div>
+        <div class="size-label">24px</div>
+      </div>
+      <div class="favicon-item">
+        <div class="tab-mock"><svg class="fav-32" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#2E9E6C"/><path d="M9,50 S27,22 50,22 S91,50 91,50 S73,78 50,78 S9,50 9,50 Z" fill="#0B0F0D"/><rect x="45" y="32" width="10" height="36" rx="5" fill="#C9A24A"/></svg><span class="tab-title">Dorian</span></div>
+        <div class="size-label">32px</div>
+      </div>
+      <div class="favicon-item">
+        <div class="tab-mock"><svg class="fav-48" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#2E9E6C"/><path d="M9,50 S27,22 50,22 S91,50 91,50 S73,78 50,78 S9,50 9,50 Z" fill="#0B0F0D"/><rect x="45" y="32" width="10" height="36" rx="5" fill="#C9A24A"/></svg><span class="tab-title">Dorian</span></div>
+        <div class="size-label">48px</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <span class="kicker">Mark</span>
+      <h2>The slit pupil, in Viper green</h2>
+      <p>Same mark as before &mdash; the vertical slit pupil is the trait that reads as "snake" fastest, and the one part worth keeping simple. Colored in the Viper system now: green body, gold pupil.</p>
+    </div>
+    <div class="mark-grid">
+      <div class="mark-card"><svg class="mono-mark" viewBox="0 0 100 100"><path d="M4,50 S24,16 50,16 S96,50 96,50 S76,84 50,84 S4,50 4,50 Z" fill="currentColor"/><rect x="44" y="28" width="12" height="44" rx="6" fill="var(--icon-pupil-color)"/></svg><div class="cap">Standalone &middot; on dark</div></div>
+      <div class="mark-card on-light"><svg class="mono-mark-light" viewBox="0 0 100 100"><path d="M4,50 S24,16 50,16 S96,50 96,50 S76,84 50,84 S4,50 4,50 Z" fill="currentColor"/><rect x="44" y="28" width="12" height="44" rx="6" fill="var(--icon-pupil-color)"/></svg><div class="cap">Standalone &middot; on light</div></div>
+      <div class="mark-card"><svg viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="#2E9E6C"/><path d="M9,50 S27,22 50,22 S91,50 91,50 S73,78 50,78 S9,50 9,50 Z" fill="#0B0F0D"/><rect x="45" y="32" width="10" height="36" rx="5" fill="#C9A24A"/></svg><div class="cap">App badge &middot; favicon</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <span class="kicker">Color</span>
+      <h2>Viper green, antique gold, obsidian</h2>
+      <p>The primary system: a muted, scale-like green as the brand color, a warm gold as the secondary accent, and a green-black obsidian base rather than neutral gray-black.</p>
+    </div>
+
+    <div class="group-label">Primary &mdash; Viper</div>
+    <div class="swatch-grid">
+      <div class="swatch"><div class="swatch-color" style="background:#3FBD85;"></div><div class="swatch-info"><div class="name">Viper 400</div><div class="hex">#3FBD85</div><div class="use">Hover states, links</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#2E9E6C;"></div><div class="swatch-info"><div class="name">Viper 500</div><div class="hex">#2E9E6C</div><div class="use">Primary brand color, CTAs, mark fill</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#1F6E4A;"></div><div class="swatch-info"><div class="name">Viper 700</div><div class="hex">#1F6E4A</div><div class="use">Pressed states, borders on color</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#17352A;"></div><div class="swatch-info"><div class="name">Viper dim</div><div class="hex">#17352A</div><div class="use">Tinted backgrounds, active nav</div></div></div>
+    </div>
+
+    <div class="group-label">Secondary &mdash; Antique gold</div>
+    <div class="swatch-grid">
+      <div class="swatch"><div class="swatch-color" style="background:#C9A24A;"></div><div class="swatch-info"><div class="name">Gold 500</div><div class="hex">#C9A24A</div><div class="use">Secondary accents, AI/premium callouts</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#3A2E14;"></div><div class="swatch-info"><div class="name">Gold dim</div><div class="hex">#3A2E14</div><div class="use">Tinted backgrounds for gold badges</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#E0A83F;"></div><div class="swatch-info"><div class="name">Warning</div><div class="hex">#E0A83F</div><div class="use">Status: under load, needs attention</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#E15241;"></div><div class="swatch-info"><div class="name">Danger</div><div class="hex">#E15241</div><div class="use">Attacks, blocked, critical status</div></div></div>
+    </div>
+
+    <div class="group-label">Base &mdash; Obsidian</div>
+    <div class="swatch-grid">
+      <div class="swatch"><div class="swatch-color" style="background:#0B0F0D;"></div><div class="swatch-info"><div class="name">Obsidian 950</div><div class="hex">#0B0F0D</div><div class="use">Page background</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#121815;"></div><div class="swatch-info"><div class="name">Obsidian 900</div><div class="hex">#121815</div><div class="use">Panel / card background</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#171F1B;"></div><div class="swatch-info"><div class="name">Obsidian 800</div><div class="hex">#171F1B</div><div class="use">Raised surfaces, hover</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#333F38;"></div><div class="swatch-info"><div class="name">Hairline strong</div><div class="hex">#333F38</div><div class="use">Input borders, dividers</div></div></div>
+    </div>
+
+    <div class="group-label">Functional only &mdash; never used as brand color</div>
+    <div class="swatch-grid">
+      <div class="swatch"><div class="swatch-color" style="background:#5B9DF0;"></div><div class="swatch-info"><div class="name">L4 blue</div><div class="hex">#5B9DF0</div><div class="use">Network-layer (XDP/eBPF) tags</div></div></div>
+      <div class="swatch"><div class="swatch-color" style="background:#B08CF0;"></div><div class="swatch-info"><div class="name">L7 purple</div><div class="hex">#B08CF0</div><div class="use">Application-layer (WAF) tags</div></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <span class="kicker">Applied</span>
+      <h2>How it sits together</h2>
+    </div>
+    <div class="example-row">
+      <button class="btn-primary">Sign in</button>
+      <button class="btn-secondary">Request access</button>
+      <span class="pill ok">healthy</span>
+      <span class="pill warn">under load</span>
+      <span class="pill danger">blocked</span>
+      <div class="mini-card"><div class="l">THREATS BLOCKED</div><div class="v num">18,940</div></div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
