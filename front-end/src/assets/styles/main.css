@@ -211,6 +211,7 @@ input[type='text'],
 input[type='search'],
 input[type='email'],
 input[type='password'],
+input[type='url'],
 input[type='date'],
 input[type='number'],
 select,
@@ -244,12 +245,74 @@ input[type='number']::-webkit-inner-spin-button {
   margin: 0;
 }
 
-input:focus,
+input[type='text']:focus,
+input[type='search']:focus,
+input[type='email']:focus,
+input[type='password']:focus,
+input[type='url']:focus,
+input[type='date']:focus,
+input[type='number']:focus,
 select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--viper-500);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--viper-500) 28%, transparent);
+}
+
+input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-content: center;
+  vertical-align: middle;
+  border: 0.5px solid var(--hairline-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  color: #08120e;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+input[type='checkbox']::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  transform: scale(0);
+  transition: transform 0.12s ease;
+  box-shadow: inset 1em 1em currentColor;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0, 43% 62%);
+}
+
+input[type='checkbox']:hover {
+  border-color: var(--text-faint);
+}
+
+input[type='checkbox']:checked {
+  background: var(--viper-500);
+  border-color: var(--viper-500);
+}
+
+input[type='checkbox']:checked::before {
+  transform: scale(1);
+}
+
+input[type='checkbox']:focus-visible {
+  outline: none;
+  border-color: var(--viper-500);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--viper-500) 28%, transparent);
+}
+
+input[type='checkbox']:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 option {
