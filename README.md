@@ -57,6 +57,12 @@ API runs at `http://localhost:8080`
 | `GET /api/proxies/{id}`     | Get one proxy      |
 | `PUT /api/proxies/{id}`     | Update proxy       |
 | `DELETE /api/proxies/{id}`  | Delete proxy       |
+| `GET /api/tasks`            | List tasks / campaigns |
+| `POST /api/tasks`           | Create and queue a task |
+| `GET /api/tasks/{id}`       | Task detail + logs |
+| `POST /api/tasks/{id}/cancel` | Cancel a running/queued task |
+| `GET /api/credits`          | Workspace credit balance |
+| `GET /api/busy-accounts`    | Account IDs currently in jobs |
 
 The first admin is created from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `back-end/.env`. All other API routes require that session cookie.
 

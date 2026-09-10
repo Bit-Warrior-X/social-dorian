@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>Dashboard</h1>
-        <p>Live overview of accounts, proxies and mailboxes</p>
+        <p>Workspace overview across infrastructure and operations</p>
       </div>
       <div class="page-head__actions">
         <span class="freshness" :class="{ 'is-live': autoRefresh && !loadError }">
@@ -37,6 +37,10 @@
           <i class="ti" :class="checking ? 'ti-loader-2 spin' : 'ti-heartbeat'" aria-hidden="true" />
           {{ checking ? 'Checking…' : 'Check proxies' }}
         </button>
+        <RouterLink class="btn" to="/tasks/new">
+          <i class="ti ti-plus" aria-hidden="true" />
+          New task
+        </RouterLink>
       </div>
     </div>
 
@@ -54,6 +58,44 @@
           <div class="stat__value" :class="tile.tone && 'is-' + tile.tone">{{ tile.value }}</div>
           <div class="stat__meta">{{ tile.meta }}</div>
         </RouterLink>
+      </div>
+
+      <div class="ops-strip">
+        <RouterLink class="ops-card" to="/tasks/active">
+          <div class="ops-card__label">Active jobs</div>
+          <div class="ops-card__value">{{ summary.tasks?.active || 0 }}</div>
+          <div class="ops-card__meta">
+            {{ summary.tasks?.running || 0 }} running · {{ summary.tasks?.queued || 0 }} queued
+          </div>
+        </RouterLink>
+        <RouterLink class="ops-card" to="/tasks/history">
+          <div class="ops-card__label">Tasks (24h)</div>
+          <div class="ops-card__value">{{ summary.tasks?.last24h || 0 }}</div>
+          <div class="ops-card__meta">
+            {{ summary.tasks?.completed || 0 }} completed · {{ summary.tasks?.failed || 0 }} failed
+          </div>
+        </RouterLink>
+        <RouterLink class="ops-card" to="/accounts">
+          <div class="ops-card__label">Busy accounts</div>
+          <div class="ops-card__value" :class="{ 'is-warn': summary.tasks?.busyAccounts }">
+            {{ summary.tasks?.busyAccounts || 0 }}
+          </div>
+          <div class="ops-card__meta">Currently assigned to a job</div>
+        </RouterLink>
+        <RouterLink class="ops-card" to="/credits">
+          <div class="ops-card__label">Credits</div>
+          <div class="ops-card__value">{{ (summary.credits?.balance || 0).toLocaleString() }}</div>
+          <div class="ops-card__meta">
+            Updated {{ summary.credits?.updatedAt ? formatDateTime(summary.credits.updatedAt) : '—' }}
+          </div>
+        </RouterLink>
+        <div class="ops-card ops-card--static">
+          <div class="ops-card__label">Routing mix</div>
+          <div class="ops-card__value">{{ summary.routing.routed }}/{{ summary.accounts.total }}</div>
+          <div class="ops-card__meta">
+            Auto {{ summary.routing.auto }} · Manual {{ summary.routing.manual }} · None {{ summary.routing.none }}
+          </div>
+        </div>
       </div>
 
       <div class="grid">
@@ -244,6 +286,103 @@
         <section class="panel col-8">
           <header class="panel__head">
             <div>
+              <h2>Recent tasks</h2>
+              <p>Latest campaign and automation jobs</p>
+            </div>
+            <RouterLink class="panel__link" to="/tasks">View all</RouterLink>
+          </header>
+          <div class="table-wrap">
+            <table v-if="(summary.recentTasks || []).length">
+              <thead>
+                <tr>
+                  <th>Task</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Progress</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="task in summary.recentTasks" :key="task.id">
+                  <td>
+                    <div class="stack">
+                      <span class="account-cell__name">#{{ task.id }} {{ task.title }}</span>
+                      <span v-if="task.targetUrl" class="sub mono-soft">{{ task.targetUrl }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="type-chip">
+                      <i class="ti" :class="taskTypeMeta(task.type).icon" aria-hidden="true" />
+                      {{ taskTypeMeta(task.type).label }}
+                    </span>
+                  </td>
+                  <td>
+                    <span class="status status--sm" :class="'status--' + task.status">
+                      {{ taskStatusLabel(task.status) }}
+                    </span>
+                  </td>
+                  <td class="muted">
+                    {{ task.doneCount }}/{{ task.accountCount }}
+                    <template v-if="task.successCount || task.failCount">
+                      · {{ task.successCount }} ok
+                      <template v-if="task.failCount"> / {{ task.failCount }} fail</template>
+                    </template>
+                  </td>
+                  <td>
+                    <div class="stack">
+                      <span>{{ task.createdBy || '—' }}</span>
+                      <span class="sub">{{ formatDateTime(task.createdAt) }}</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="empty-inline">No tasks launched yet.</p>
+          </div>
+        </section>
+
+        <section class="panel col-4">
+          <header class="panel__head">
+            <div>
+              <h2>Quick actions</h2>
+              <p>Jump into common workflows</p>
+            </div>
+          </header>
+          <div class="quick-actions">
+            <RouterLink class="quick" to="/tasks?new=report">
+              <i class="ti ti-flag" aria-hidden="true" />
+              <div>
+                <strong>Report post</strong>
+                <span>Select accounts and launch a report job</span>
+              </div>
+            </RouterLink>
+            <RouterLink class="quick" to="/tasks?new=browse">
+              <i class="ti ti-player-play" aria-hidden="true" />
+              <div>
+                <strong>Browse feed</strong>
+                <span>Simulate activity across idle accounts</span>
+              </div>
+            </RouterLink>
+            <RouterLink class="quick" to="/accounts">
+              <i class="ti ti-share" aria-hidden="true" />
+              <div>
+                <strong>Social accounts</strong>
+                <span>Inventory, proxies, and open sessions</span>
+              </div>
+            </RouterLink>
+            <RouterLink class="quick" to="/proxies">
+              <i class="ti ti-network" aria-hidden="true" />
+              <div>
+                <strong>Proxy health</strong>
+                <span>{{ summary.proxies.issues }} issue{{ summary.proxies.issues === 1 ? '' : 's' }} · {{ summary.proxies.unused }} unused</span>
+              </div>
+            </RouterLink>
+          </div>
+        </section>
+
+        <section class="panel col-8">
+          <header class="panel__head">
+            <div>
               <h2>Recent accounts</h2>
               <p>Latest connections</p>
             </div>
@@ -327,6 +466,7 @@ import { STATUSES, platformMeta, proxyModeLabel, statusLabel } from '../constant
 import { COUNTRIES } from '../constants/countries'
 import { GMAIL_STATUSES, gmailStatusLabel } from '../constants/gmails'
 import { PROXY_STATUSES, protocolLabel, proxyStatusLabel } from '../constants/proxies'
+import { taskStatusLabel, taskTypeMeta } from '../constants/tasks'
 
 const REFRESH_MS = 30000
 
@@ -370,7 +510,7 @@ const tiles = computed(() => {
       label: 'Accounts',
       icon: 'ti-share',
       value: data.accounts.total,
-      meta: `${data.accounts.active} active`,
+      meta: `${data.accounts.active} active · ${data.accounts.addedLast30} in 30d`,
       to: { path: '/accounts' },
     },
     {
@@ -381,6 +521,24 @@ const tiles = computed(() => {
       tone: data.accounts.attention ? 'warning' : 'success',
       meta: `${data.accounts.expired} expired · ${data.accounts.error} error`,
       to: { path: '/accounts', query: { status: 'error' } },
+    },
+    {
+      key: 'active-jobs',
+      label: 'Active jobs',
+      icon: 'ti-player-play',
+      value: data.tasks?.active || 0,
+      tone: data.tasks?.running ? 'warning' : '',
+      meta: `${data.tasks?.running || 0} running · ${data.tasks?.busyAccounts || 0} busy accounts`,
+      to: { path: '/tasks/active' },
+    },
+    {
+      key: 'task-fails',
+      label: 'Failed tasks',
+      icon: 'ti-xbox-x',
+      value: data.tasks?.failed || 0,
+      tone: data.tasks?.failed ? 'danger' : 'success',
+      meta: `${data.tasks?.completed || 0} completed · ${data.tasks?.last24h || 0} in 24h`,
+      to: { path: '/tasks/history' },
     },
     {
       key: 'proxies',
@@ -408,13 +566,14 @@ const tiles = computed(() => {
       to: { path: '/gmails' },
     },
     {
-      key: 'unrouted',
-      label: 'Unrouted accounts',
-      icon: 'ti-route-off',
-      value: data.routing.unassigned,
-      tone: data.routing.unassigned ? 'warning' : 'success',
-      meta: `${data.routing.routed} routed through a proxy`,
-      to: { path: '/accounts' },
+      key: 'credits',
+      label: 'Credits',
+      icon: 'ti-coin',
+      value: (data.credits?.balance || 0).toLocaleString(),
+      meta: data.routing.unassigned
+        ? `${data.routing.unassigned} unrouted accounts`
+        : `${data.routing.routed} accounts routed`,
+      to: { path: '/credits' },
     },
   ]
 })
@@ -514,6 +673,13 @@ function formatDate(value) {
     day: 'numeric',
     timeZone: 'UTC',
   })
+}
+
+function formatDateTime(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
 }
 
 // Background polls stay quiet on failure so a flaky API cannot bury the user in toasts.
@@ -719,6 +885,113 @@ onUnmounted(() => {
   margin-top: 2px;
   font-size: 12px;
   color: var(--text-faint);
+}
+
+.ops-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ops-card {
+  display: block;
+  padding: 14px 16px;
+  border: 0.5px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--panel);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.ops-card:hover {
+  border-color: var(--hairline-strong);
+  background: var(--panel-raised);
+}
+
+.ops-card--static {
+  cursor: default;
+}
+
+.ops-card__label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.ops-card__value {
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--viper-400);
+}
+
+.ops-card__value.is-warn {
+  color: var(--warn);
+}
+
+.ops-card__meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quick {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 0.5px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.quick:hover {
+  border-color: var(--hairline-strong);
+  background: var(--panel-raised);
+}
+
+.quick .ti {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--viper-dim);
+  color: var(--viper-400);
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.quick strong {
+  display: block;
+  font-size: 13px;
+}
+
+.quick span {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.mono-soft {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  word-break: break-all;
 }
 
 .grid {
@@ -1107,6 +1380,32 @@ tbody tr:last-child td {
 }
 
 .status--revoked {
+  background: var(--panel-raised);
+  color: var(--text-faint);
+}
+
+.status--queued,
+.status--pending {
+  background: var(--panel-raised);
+  color: var(--text-dim);
+}
+
+.status--running {
+  background: var(--gold-dim);
+  color: var(--gold-500);
+}
+
+.status--completed {
+  background: var(--viper-dim);
+  color: var(--viper-400);
+}
+
+.status--failed {
+  background: var(--bg-danger);
+  color: var(--danger);
+}
+
+.status--cancelled {
   background: var(--panel-raised);
   color: var(--text-faint);
 }

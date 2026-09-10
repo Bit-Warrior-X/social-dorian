@@ -2,10 +2,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { getCurrentUser } from '../api/auth'
 import AppLayout from '../components/AppLayout.vue'
 import AccountsPage from '../views/AccountsPage.vue'
+import CreditsPage from '../views/CreditsPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import GmailsPage from '../views/GmailsPage.vue'
 import LoginPage from '../views/LoginPage.vue'
 import ProxiesPage from '../views/ProxiesPage.vue'
+import TasksPage from '../views/TasksPage.vue'
 import PlaceholderPage from '../views/PlaceholderPage.vue'
 
 const routes = [
@@ -26,25 +28,22 @@ const routes = [
       { path: '/accounts', name: 'accounts', component: AccountsPage },
       { path: '/proxies', name: 'proxies', component: ProxiesPage },
       { path: '/gmails', name: 'gmails', component: GmailsPage },
+      { path: '/credits', name: 'credits', component: CreditsPage },
+      { path: '/tasks', name: 'tasks', component: TasksPage, props: { mode: 'all' } },
       {
-        path: '/posts',
-        component: PlaceholderPage,
-        meta: { title: 'Posts', description: 'Scheduled and published posts for this organization.' },
+        path: '/tasks/new',
+        name: 'tasks-new',
+        redirect: { path: '/tasks', query: { new: 'report' } },
       },
+      { path: '/tasks/active', name: 'tasks-active', component: TasksPage, props: { mode: 'active' } },
+      { path: '/tasks/history', name: 'tasks-history', component: TasksPage, props: { mode: 'history' } },
       {
-        path: '/organization',
+        path: '/monitor',
         component: PlaceholderPage,
-        meta: { title: 'Organization', description: 'Organization profile and workspace details.' },
-      },
-      {
-        path: '/members',
-        component: PlaceholderPage,
-        meta: { title: 'Members', description: 'People who can manage accounts in this workspace.' },
-      },
-      {
-        path: '/activity',
-        component: PlaceholderPage,
-        meta: { title: 'Activity log', description: 'Recent account connections and admin actions.' },
+        meta: {
+          title: 'Live feed',
+          description: 'Log stream of browse and automation activity across accounts.',
+        },
       },
       {
         path: '/settings',

@@ -3,7 +3,7 @@
     <div class="page-head">
       <div>
         <h1>Social accounts</h1>
-        <p>Accounts connected for this organization</p>
+        <p>Infrastructure inventory — launch work from Tasks</p>
       </div>
       <button class="btn btn-primary" type="button" @click="openCreate">
         <i class="ti ti-plus" aria-hidden="true" />
@@ -23,9 +23,54 @@
         <div class="stat__value is-success">{{ countByStatus('active') }}</div>
       </div>
       <div class="stat">
+        <div class="stat__label">Busy</div>
+        <div class="stat__value is-warning">{{ busyIds.length }}</div>
+      </div>
+      <div class="stat">
         <div class="stat__label">Needs attention</div>
         <div class="stat__value is-warning">{{ needsAttention }}</div>
       </div>
+    </div>
+
+    <div class="toolbar">
+      <template v-if="selectedIds.length">
+        <span class="toolbar__label">{{ selectedIds.length }} selected</span>
+        <button class="btn btn-primary" type="button" @click="openTask('report', selectedIds)">
+          <i class="ti ti-flag" aria-hidden="true" />
+          Report
+        </button>
+        <button class="btn" type="button" @click="openTask('post', selectedIds)">
+          <i class="ti ti-pencil-plus" aria-hidden="true" />
+          Post
+        </button>
+        <button class="btn" type="button" @click="openTask('browse', selectedIds)">
+          <i class="ti ti-player-play" aria-hidden="true" />
+          Browse
+        </button>
+        <button class="btn" type="button" @click="openTask('login_test', selectedIds)">
+          <i class="ti ti-shield-check" aria-hidden="true" />
+          Login test
+        </button>
+        <button class="btn" type="button" @click="selectedIds = []">Clear</button>
+      </template>
+      <template v-else>
+        <button class="btn" type="button" @click="openTask('post')">
+          <i class="ti ti-pencil-plus" aria-hidden="true" />
+          New post
+        </button>
+        <button class="btn" type="button" @click="openTask('report')">
+          <i class="ti ti-flag" aria-hidden="true" />
+          Report post
+        </button>
+        <button class="btn" type="button" @click="openTask('browse')">
+          <i class="ti ti-player-play" aria-hidden="true" />
+          Browse feed
+        </button>
+        <button class="btn" type="button" @click="openTask('login_test')">
+          <i class="ti ti-shield-check" aria-hidden="true" />
+          Login test
+        </button>
+      </template>
     </div>
 
     <div class="filters">
@@ -51,9 +96,17 @@
           <table>
             <thead>
               <tr>
+                <th class="col-check">
+                  <input
+                    type="checkbox"
+                    :checked="allFilteredSelected"
+                    aria-label="Select all filtered accounts"
+                    @change="toggleSelectAll"
+                  />
+                </th>
                 <th class="col-account">Account</th>
                 <th class="col-email">Email</th>
-                <th class="col-profile">Profile</th>
+                <th class="col-runtime">Runtime</th>
                 <th class="col-status">Status</th>
                 <th class="col-proxy">Proxy</th>
                 <th class="col-connected">Connected</th>
@@ -62,6 +115,14 @@
             </thead>
             <tbody>
               <tr v-for="account in filteredAccounts" :key="account.id">
+                <td>
+                  <input
+                    v-model="selectedIds"
+                    type="checkbox"
+                    :value="account.id"
+                    :aria-label="'Select ' + accountDisplayName(account)"
+                  />
+                </td>
                 <td>
                   <div class="account-cell">
                     <i class="ti" :class="platformMeta(account.platform).icon" aria-hidden="true" />
@@ -78,12 +139,14 @@
                   </div>
                 </td>
                 <td>
-                  <div class="stack-cell">
-                    <div class="stack-cell__primary">{{ genderLabel(account.gender) || '—' }}</div>
-                    <div class="stack-cell__sub">
-                      {{ account.birthday ? formatDisplayDate(account.birthday) : 'No birthday' }}
-                    </div>
-                  </div>
+                  <span class="runtime" :class="{ 'is-busy': isBusy(account.id) }">
+                    <i
+                      class="ti"
+                      :class="isBusy(account.id) ? 'ti-loader-2 spin' : 'ti-circle-filled'"
+                      aria-hidden="true"
+                    />
+                    {{ isBusy(account.id) ? 'Busy' : 'Idle' }}
+                  </span>
                 </td>
                 <td>
                   <span class="status" :class="'status--' + account.status">
@@ -123,22 +186,29 @@
                       aria-hidden="true"
                     />
                   </button>
-                  <button
-                    class="btn btn-icon"
-                    type="button"
-                    :aria-label="'Edit ' + accountDisplayName(account)"
-                    @click="openEdit(account)"
-                  >
-                    <i class="ti ti-edit" aria-hidden="true" />
-                  </button>
-                  <button
-                    class="btn btn-icon"
-                    type="button"
-                    :aria-label="'Disconnect ' + accountDisplayName(account)"
-                    @click="openDelete(account)"
-                  >
-                    <i class="ti ti-trash" aria-hidden="true" />
-                  </button>
+                  <div class="menu">
+                    <button
+                      class="btn btn-icon"
+                      type="button"
+                      :aria-label="'More actions for ' + accountDisplayName(account)"
+                      @click.stop="toggleMenu(account.id)"
+                    >
+                      <i class="ti ti-dots-vertical" aria-hidden="true" />
+                    </button>
+                    <div v-if="openMenuId === account.id" class="menu__panel" @click.stop>
+                      <button type="button" @click="rowAction(() => openAccount(account))">Log in / Open</button>
+                      <button type="button" @click="rowAction(() => openTask('login_test', [account.id]))">
+                        Force refresh / Login test
+                      </button>
+                      <button type="button" @click="rowAction(() => openTask('browse', [account.id]))">
+                        Run activity simulation
+                      </button>
+                      <button type="button" @click="rowAction(() => openEdit(account))">Edit</button>
+                      <button type="button" class="is-danger" @click="rowAction(() => openDelete(account))">
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -173,17 +243,30 @@
       @close="deleting = null"
       @confirm="confirmDelete"
     />
+
+    <NewTaskModal
+      :open="taskModalOpen"
+      :accounts="accounts"
+      :initial-type="taskModalType"
+      :initial-account-ids="taskModalAccountIds"
+      :saving="taskSaving"
+      :error="taskError"
+      @close="taskModalOpen = false"
+      @submit="launchTask"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AccountFormModal from '../components/AccountFormModal.vue'
 import DeleteConfirmModal from '../components/DeleteConfirmModal.vue'
+import NewTaskModal from '../components/NewTaskModal.vue'
 import OpenAccountModal from '../components/OpenAccountModal.vue'
 import { createAccount, closeAccountSession, deleteAccount, listAccounts, openAccountSession, updateAccount } from '../api/accounts'
 import { listProxies } from '../api/proxies'
+import { createTask, getBusyAccounts } from '../api/tasks'
 import { useNotify } from '../composables/useNotify'
 import {
   PLATFORMS,
@@ -194,11 +277,12 @@ import {
   platformMeta,
   statusLabel,
 } from '../constants/accounts'
+import { taskTypeMeta } from '../constants/tasks'
 
 const { notifySuccess, notifyError } = useNotify()
 const route = useRoute()
+const router = useRouter()
 
-// The dashboard links here with filters already applied, e.g. /accounts?status=error.
 function queryFilter(key, options) {
   const value = String(route.query[key] || '')
   return options.some((option) => option.value === value) ? value : ''
@@ -206,11 +290,14 @@ function queryFilter(key, options) {
 
 const accounts = ref([])
 const proxies = ref([])
+const busyIds = ref([])
 const loading = ref(true)
 const loadError = ref('')
 const query = ref(String(route.query.q || ''))
 const platformFilter = ref(queryFilter('platform', PLATFORMS))
 const statusFilter = ref(queryFilter('status', STATUSES))
+const selectedIds = ref([])
+const openMenuId = ref(null)
 const formOpen = ref(false)
 const editing = ref(null)
 const deleting = ref(null)
@@ -220,6 +307,12 @@ const opening = ref(null)
 const openSession = ref(null)
 const openingBusy = ref(false)
 const openError = ref('')
+const taskModalOpen = ref(false)
+const taskModalType = ref('report')
+const taskModalAccountIds = ref([])
+const taskSaving = ref(false)
+const taskError = ref('')
+let busyTimer = 0
 
 const needsAttention = computed(
   () => accounts.value.filter((a) => a.status === 'expired' || a.status === 'error').length,
@@ -250,8 +343,17 @@ const filteredAccounts = computed(() => {
   })
 })
 
+const allFilteredSelected = computed(() => {
+  const ids = filteredAccounts.value.map((account) => account.id)
+  return ids.length > 0 && ids.every((id) => selectedIds.value.includes(id))
+})
+
 function proxyDetails(account) {
   return accountProxyDetails(account, proxies.value)
+}
+
+function isBusy(accountId) {
+  return busyIds.value.includes(accountId)
 }
 
 function formatDisplayDate(value) {
@@ -270,6 +372,58 @@ function countByStatus(status) {
   return accounts.value.filter((account) => account.status === status).length
 }
 
+function toggleSelectAll(event) {
+  const ids = filteredAccounts.value.map((account) => account.id)
+  if (event.target.checked) {
+    selectedIds.value = Array.from(new Set([...selectedIds.value, ...ids]))
+  } else {
+    selectedIds.value = selectedIds.value.filter((id) => !ids.includes(id))
+  }
+}
+
+function toggleMenu(id) {
+  openMenuId.value = openMenuId.value === id ? null : id
+}
+
+function rowAction(fn) {
+  openMenuId.value = null
+  fn()
+}
+
+function openTask(type, accountIds = []) {
+  openMenuId.value = null
+  taskModalType.value = type
+  taskModalAccountIds.value = accountIds
+  taskError.value = ''
+  taskModalOpen.value = true
+}
+
+async function launchTask(payload) {
+  taskSaving.value = true
+  taskError.value = ''
+  try {
+    const task = await createTask(payload)
+    taskModalOpen.value = false
+    selectedIds.value = []
+    notifySuccess(`Launched ${taskTypeMeta(task.type).label} #${task.id}`)
+    await router.push('/tasks/active')
+  } catch (err) {
+    taskError.value = err.message || 'Could not launch task'
+    notifyError(taskError.value)
+  } finally {
+    taskSaving.value = false
+  }
+}
+
+async function loadBusy() {
+  try {
+    const data = await getBusyAccounts()
+    busyIds.value = data.accountIds || []
+  } catch (_) {
+    // Keep previous busy markers if the poll fails.
+  }
+}
+
 async function loadAccounts() {
   loading.value = true
   loadError.value = ''
@@ -280,6 +434,7 @@ async function loadAccounts() {
     ])
     accounts.value = accountRows
     proxies.value = proxyRows
+    await loadBusy()
   } catch (err) {
     const message = err.message || 'Could not load accounts. Is the API running?'
     loadError.value = message
@@ -383,7 +538,20 @@ async function confirmDelete() {
   }
 }
 
-onMounted(loadAccounts)
+function onDocumentClick() {
+  openMenuId.value = null
+}
+
+onMounted(() => {
+  loadAccounts()
+  busyTimer = window.setInterval(loadBusy, 3000)
+  document.addEventListener('click', onDocumentClick)
+})
+
+onUnmounted(() => {
+  if (busyTimer) window.clearInterval(busyTimer)
+  document.removeEventListener('click', onDocumentClick)
+})
 </script>
 
 <style scoped>
@@ -455,6 +623,24 @@ onMounted(loadAccounts)
   color: var(--warn);
 }
 
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding: 10px 12px;
+  border: 0.5px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.toolbar__label {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-right: 4px;
+}
+
 .filters {
   display: flex;
   gap: 8px;
@@ -488,7 +674,7 @@ onMounted(loadAccounts)
 
 table {
   width: 100%;
-  min-width: 980px;
+  min-width: 1040px;
   border-collapse: collapse;
   font-size: 14px;
   table-layout: fixed;
@@ -507,14 +693,15 @@ th {
   color: var(--text-dim);
 }
 
+.col-check { width: 40px; }
 .col-account { width: 18%; }
 .col-email { width: 18%; }
-.col-profile { width: 12%; }
+.col-runtime { width: 10%; }
 .col-status { width: 10%; }
 .col-proxy { width: 16%; }
 .col-connected { width: 14%; }
 .col-actions {
-  width: 14%;
+  width: 12%;
   text-align: right;
 }
 
@@ -541,8 +728,7 @@ tbody tr:last-child td {
   font-weight: 500;
 }
 
-.account-cell__platform,
-.sub {
+.account-cell__platform {
   font-size: 12px;
   color: var(--text-faint);
 }
@@ -573,6 +759,26 @@ tbody tr:last-child td {
 
 .muted {
   color: var(--text-dim);
+}
+
+.runtime {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--success);
+}
+
+.runtime .ti {
+  font-size: 10px;
+}
+
+.runtime.is-busy {
+  color: var(--warn);
+}
+
+.runtime.is-busy .ti {
+  font-size: 14px;
 }
 
 .proxy {
@@ -608,14 +814,53 @@ tbody tr:last-child td {
   color: var(--text-faint);
 }
 
-
 .actions {
   text-align: right;
   white-space: nowrap;
+  position: relative;
 }
 
 .actions .ti {
   font-size: 16px;
+}
+
+.menu {
+  display: inline-block;
+  position: relative;
+}
+
+.menu__panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  min-width: 210px;
+  padding: 6px;
+  border: 0.5px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu__panel button {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.menu__panel button:hover {
+  background: var(--panel-raised);
+}
+
+.menu__panel button.is-danger {
+  color: var(--danger);
 }
 
 .spin {

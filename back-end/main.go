@@ -39,6 +39,10 @@ func main() {
 	accountStore := newAccountStore(db, proxyStore)
 	gmailStore := newGmailStore(db)
 	dashboardStore := newDashboardStore(db)
+	taskStore := newTaskStore(db)
+	if err := taskStore.ensureSchema(); err != nil {
+		log.Fatalf("failed to prepare task tables: %v", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", handleHealth)
@@ -53,6 +57,10 @@ func main() {
 	mux.HandleFunc("/api/gmails", gmailStore.handleGmails)
 	mux.HandleFunc("/api/gmails/", gmailStore.handleGmailByID)
 	mux.HandleFunc("/api/sessions/", accountStore.handleBrowseSessions)
+	mux.HandleFunc("/api/tasks", taskStore.handleTasks)
+	mux.HandleFunc("/api/tasks/", taskStore.handleTaskByID)
+	mux.HandleFunc("/api/credits", taskStore.handleCredits)
+	mux.HandleFunc("/api/busy-accounts", taskStore.handleBusyAccounts)
 
 	port := os.Getenv("PORT")
 	if port == "" {

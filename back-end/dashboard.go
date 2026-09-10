@@ -24,12 +24,15 @@ type DashboardSummary struct {
 	Accounts       DashboardAccountStats `json:"accounts"`
 	Proxies        DashboardProxyStats   `json:"proxies"`
 	Gmails         DashboardGmailStats   `json:"gmails"`
+	Tasks          DashboardTaskStats    `json:"tasks"`
+	Credits        DashboardCredits      `json:"credits"`
 	Routing        DashboardRouting      `json:"routing"`
 	Platforms      []DashboardPlatform   `json:"platforms"`
 	Countries      []DashboardCountry    `json:"countries"`
 	Trend          []DashboardTrendPoint `json:"trend"`
 	TopProxies     []DashboardProxyLoad  `json:"topProxies"`
 	RecentAccounts []DashboardRecent     `json:"recentAccounts"`
+	RecentTasks    []DashboardRecentTask `json:"recentTasks"`
 	Attention      []DashboardAttention  `json:"attention"`
 }
 
@@ -61,6 +64,23 @@ type DashboardGmailStats struct {
 	Issues            int `json:"issues"`
 	Unlinked          int `json:"unlinked"`
 	UnmanagedAccounts int `json:"unmanagedAccounts"`
+}
+
+type DashboardTaskStats struct {
+	Total       int `json:"total"`
+	Queued      int `json:"queued"`
+	Running     int `json:"running"`
+	Completed   int `json:"completed"`
+	Failed      int `json:"failed"`
+	Cancelled   int `json:"cancelled"`
+	Active      int `json:"active"`
+	Last24h     int `json:"last24h"`
+	BusyAccounts int `json:"busyAccounts"`
+}
+
+type DashboardCredits struct {
+	Balance   int    `json:"balance"`
+	UpdatedAt string `json:"updatedAt,omitempty"`
 }
 
 type DashboardRouting struct {
@@ -113,6 +133,20 @@ type DashboardRecent struct {
 	ConnectedAt  string `json:"connectedAt"`
 }
 
+type DashboardRecentTask struct {
+	ID           int    `json:"id"`
+	Type         string `json:"type"`
+	Title        string `json:"title"`
+	Status       string `json:"status"`
+	AccountCount int    `json:"accountCount"`
+	DoneCount    int    `json:"doneCount"`
+	SuccessCount int    `json:"successCount"`
+	FailCount    int    `json:"failCount"`
+	CreatedBy    string `json:"createdBy"`
+	CreatedAt    string `json:"createdAt"`
+	TargetURL    string `json:"targetUrl"`
+}
+
 // DashboardAttention carries raw status values plus a short detail string so the
 // frontend can render labels with its own shared constants.
 type DashboardAttention struct {
@@ -150,6 +184,12 @@ func (s *DashboardStore) summary() (DashboardSummary, error) {
 	if out.Gmails, err = s.gmailStats(); err != nil {
 		return DashboardSummary{}, err
 	}
+	if out.Tasks, err = s.taskStats(); err != nil {
+		return DashboardSummary{}, err
+	}
+	if out.Credits, err = s.credits(); err != nil {
+		return DashboardSummary{}, err
+	}
 	if out.Platforms, err = s.platforms(); err != nil {
 		return DashboardSummary{}, err
 	}
@@ -163,6 +203,9 @@ func (s *DashboardStore) summary() (DashboardSummary, error) {
 		return DashboardSummary{}, err
 	}
 	if out.RecentAccounts, err = s.recentAccounts(); err != nil {
+		return DashboardSummary{}, err
+	}
+	if out.RecentTasks, err = s.recentTasks(); err != nil {
 		return DashboardSummary{}, err
 	}
 	if out.Attention, err = s.attention(); err != nil {
@@ -268,6 +311,112 @@ func (s *DashboardStore) gmailStats() (DashboardGmailStats, error) {
 		LEFT JOIN gmails g ON LOWER(g.email) = LOWER(a.email)
 		WHERE g.id IS NULL`).Scan(&stats.UnmanagedAccounts)
 	return stats, err
+}
+
+func (s *DashboardStore) taskStats() (DashboardTaskStats, error) {
+	var stats DashboardTaskStats
+	err := s.db.QueryRow(`
+		SELECT
+			COUNT(*),
+			COALESCE(SUM(status IN ('pending', 'queued')), 0),
+			COALESCE(SUM(status = 'running'), 0),
+			COALESCE(SUM(status = 'completed'), 0),
+			COALESCE(SUM(status = 'failed'), 0),
+			COALESCE(SUM(status = 'cancelled'), 0),
+			COALESCE(SUM(created_at >= UTC_TIMESTAMP() - INTERVAL 1 DAY), 0)
+		FROM tasks`).Scan(
+		&stats.Total,
+		&stats.Queued,
+		&stats.Running,
+		&stats.Completed,
+		&stats.Failed,
+		&stats.Cancelled,
+		&stats.Last24h,
+	)
+	if err != nil {
+		// Tasks table may not exist yet on older DBs mid-migration.
+		if strings.Contains(err.Error(), "doesn't exist") {
+			return DashboardTaskStats{}, nil
+		}
+		return stats, err
+	}
+	stats.Active = stats.Queued + stats.Running
+
+	err = s.db.QueryRow(`
+		SELECT COUNT(DISTINCT account_id)
+		FROM task_items
+		WHERE status IN ('pending', 'running')`).Scan(&stats.BusyAccounts)
+	if err != nil {
+		if strings.Contains(err.Error(), "doesn't exist") {
+			return stats, nil
+		}
+		return stats, err
+	}
+	return stats, nil
+}
+
+func (s *DashboardStore) credits() (DashboardCredits, error) {
+	var (
+		out       DashboardCredits
+		updatedAt sql.NullTime
+	)
+	err := s.db.QueryRow(`SELECT balance, updated_at FROM workspace_credits WHERE id = 1`).Scan(&out.Balance, &updatedAt)
+	if err == sql.ErrNoRows {
+		return DashboardCredits{Balance: 0}, nil
+	}
+	if err != nil {
+		if strings.Contains(err.Error(), "doesn't exist") {
+			return DashboardCredits{}, nil
+		}
+		return out, err
+	}
+	if updatedAt.Valid {
+		out.UpdatedAt = formatDateTime(updatedAt.Time)
+	}
+	return out, nil
+}
+
+func (s *DashboardStore) recentTasks() ([]DashboardRecentTask, error) {
+	rows, err := s.db.Query(`
+		SELECT t.id, t.type, t.title, t.status, t.target_url, t.created_by, t.created_at,
+		       COUNT(i.id) AS account_count,
+		       SUM(CASE WHEN i.status IN ('success','failed','cancelled') THEN 1 ELSE 0 END) AS done_count,
+		       SUM(CASE WHEN i.status = 'success' THEN 1 ELSE 0 END) AS success_count,
+		       SUM(CASE WHEN i.status = 'failed' THEN 1 ELSE 0 END) AS fail_count
+		FROM tasks t
+		LEFT JOIN task_items i ON i.task_id = t.id
+		GROUP BY t.id, t.type, t.title, t.status, t.target_url, t.created_by, t.created_at
+		ORDER BY t.id DESC
+		LIMIT ?`, dashboardListLimit)
+	if err != nil {
+		if strings.Contains(err.Error(), "doesn't exist") {
+			return []DashboardRecentTask{}, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]DashboardRecentTask, 0)
+	for rows.Next() {
+		var (
+			item                         DashboardRecentTask
+			createdAt                    time.Time
+			accountCount, done, ok, fail sql.NullInt64
+		)
+		if err := rows.Scan(
+			&item.ID, &item.Type, &item.Title, &item.Status, &item.TargetURL, &item.CreatedBy, &createdAt,
+			&accountCount, &done, &ok, &fail,
+		); err != nil {
+			return nil, err
+		}
+		item.CreatedAt = formatDateTime(createdAt)
+		item.AccountCount = int(accountCount.Int64)
+		item.DoneCount = int(done.Int64)
+		item.SuccessCount = int(ok.Int64)
+		item.FailCount = int(fail.Int64)
+		out = append(out, item)
+	}
+	return out, rows.Err()
 }
 
 func (s *DashboardStore) platforms() ([]DashboardPlatform, error) {

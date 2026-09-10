@@ -7,15 +7,27 @@
 
     <nav class="nav" aria-label="Admin">
       <RouterLink
-        v-for="item in navItems"
-        :key="item.to"
-        :to="item.to"
-        class="navitem"
-        :class="{ active: route.path === item.to }"
+        to="/dashboard"
+        class="navitem navitem--top"
+        :class="{ active: route.path === '/dashboard' }"
       >
-        <i class="ti" :class="item.icon" aria-hidden="true" />
-        {{ item.label }}
+        <i class="ti ti-layout-dashboard" aria-hidden="true" />
+        Dashboard
       </RouterLink>
+
+      <section v-for="group in navGroups" :key="group.label" class="nav-group">
+        <h2 class="nav-group__label">{{ group.label }}</h2>
+        <RouterLink
+          v-for="item in group.items"
+          :key="item.to"
+          :to="item.to"
+          class="navitem"
+          :class="{ active: isActive(item.to) }"
+        >
+          <i class="ti" :class="item.icon" aria-hidden="true" />
+          {{ item.label }}
+        </RouterLink>
+      </section>
     </nav>
 
     <div class="sidebar__footer">
@@ -43,26 +55,42 @@ import DorianMark from './DorianMark.vue'
 const route = useRoute()
 const router = useRouter()
 
+const navGroups = [
+  {
+    label: 'Infrastructure',
+    items: [
+      { to: '/accounts', icon: 'ti-share', label: 'Social accounts' },
+      { to: '/proxies', icon: 'ti-network', label: 'Proxy management' },
+      { to: '/gmails', icon: 'ti-brand-gmail', label: 'Email management' },
+      { to: '/credits', icon: 'ti-coin', label: 'Credit balance' },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { to: '/tasks', icon: 'ti-list-check', label: 'Tasks / Campaigns' },
+      { to: '/tasks/new', icon: 'ti-plus', label: 'New task' },
+      { to: '/tasks/active', icon: 'ti-player-play', label: 'Active jobs' },
+      { to: '/tasks/history', icon: 'ti-history', label: 'History' },
+      { to: '/monitor', icon: 'ti-activity', label: 'Live feed' },
+    ],
+  },
+]
+
+function isActive(to) {
+  if (to === '/tasks') return route.path === '/tasks'
+  return route.path === to || route.path.startsWith(`${to}/`)
+}
+
 async function signOut() {
   await logout()
   await router.replace({ name: 'login' })
 }
-
-const navItems = [
-  { to: '/dashboard', icon: 'ti-layout-dashboard', label: 'Dashboard' },
-  { to: '/accounts', icon: 'ti-share', label: 'Social accounts' },
-  { to: '/proxies', icon: 'ti-network', label: 'Proxy management' },
-  { to: '/gmails', icon: 'ti-brand-gmail', label: 'Gmail management' },
-  { to: '/posts', icon: 'ti-calendar', label: 'Posts' },
-  { to: '/organization', icon: 'ti-building', label: 'Organization' },
-  { to: '/members', icon: 'ti-users', label: 'Members' },
-  { to: '/activity', icon: 'ti-history', label: 'Activity log' },
-]
 </script>
 
 <style scoped>
 .sidebar {
-  width: 200px;
+  width: 220px;
   flex-shrink: 0;
   background: var(--panel);
   padding: 1rem 0.75rem;
@@ -94,8 +122,26 @@ const navItems = [
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 14px;
   flex: 1;
+  overflow: auto;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-group__label {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
 .navitem {
@@ -106,6 +152,10 @@ const navItems = [
   border-radius: var(--radius);
   font-size: 13px;
   color: var(--text-dim);
+}
+
+.navitem--top {
+  margin-bottom: -6px;
 }
 
 .navitem .ti {
@@ -154,7 +204,7 @@ const navItems = [
 
 @media (max-width: 800px) {
   .sidebar {
-    width: 240px;
+    width: 250px;
     height: 100%;
   }
 }
