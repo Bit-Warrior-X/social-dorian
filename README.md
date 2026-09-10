@@ -40,6 +40,9 @@ API runs at `http://localhost:8080`
 | Endpoint                    | Description        |
 |-----------------------------|--------------------|
 | `GET /api/health`           | Health check       |
+| `POST /api/auth/login`      | Sign in (cookie session) |
+| `POST /api/auth/logout`     | Sign out           |
+| `GET /api/auth/me`          | Current admin user |
 | `GET /api/dashboard`        | Aggregated stats   |
 | `GET /api/accounts`         | List accounts      |
 | `POST /api/accounts`        | Connect account    |
@@ -54,6 +57,8 @@ API runs at `http://localhost:8080`
 | `GET /api/proxies/{id}`     | Get one proxy      |
 | `PUT /api/proxies/{id}`     | Update proxy       |
 | `DELETE /api/proxies/{id}`  | Delete proxy       |
+
+The first admin is created from `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `back-end/.env`. All other API routes require that session cookie.
 
 ### Frontend
 

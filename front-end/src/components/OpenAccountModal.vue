@@ -58,10 +58,26 @@
             <span class="chip__label">Profile</span>
             <strong>{{ session.reused ? 'Restored' : 'Saved' }}</strong>
           </div>
+          <div v-if="loginLabel" class="chip" :class="loginChipClass">
+            <span class="chip__label">Login</span>
+            <strong>{{ loginLabel }}</strong>
+            <button
+              v-if="canRetryLogin"
+              class="btn btn-icon chip__copy"
+              type="button"
+              aria-label="Retry login"
+              @click="retryLogin"
+            >
+              <i class="ti ti-refresh" aria-hidden="true" />
+            </button>
+          </div>
         </template>
       </div>
 
       <p v-if="error" class="session__error">{{ error }}</p>
+      <p v-else-if="loginMessage && loginStatus && loginStatus !== 'skipped'" class="session__note" :class="{ 'is-bad': loginStatus === 'failed' || loginStatus === 'error' }">
+        {{ loginMessage }}
+      </p>
 
       <div class="session__frame-wrap">
         <div v-if="loading" class="session__loading">
@@ -82,8 +98,9 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import ModalDialog from './ModalDialog.vue'
+import { getAccountSessionStatus, retryAccountLogin } from '../api/accounts'
 import { useNotify } from '../composables/useNotify'
 import { accountDisplayName, platformMeta } from '../constants/accounts'
 
@@ -98,6 +115,10 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 const { notifySuccess, notifyError } = useNotify()
 
+const loginStatus = ref('')
+const loginMessage = ref('')
+let pollTimer = 0
+
 const dialogTitle = computed(() => {
   if (!props.account) return 'Open account'
   return `Open ${accountDisplayName(props.account)} · ${platformMeta(props.account.platform).label}`
@@ -108,15 +129,112 @@ const frameUrl = computed(() => props.session?.sessionUrl || '')
 const statusIcon = computed(() => {
   if (props.error) return 'ti-alert-circle'
   if (props.loading) return 'ti-loader-2 spin'
+  if (loginStatus.value === 'signing_in' || loginStatus.value === 'starting' || loginStatus.value === 'verifying') {
+    return 'ti-loader-2 spin'
+  }
   return 'ti-brand-chrome'
 })
 
 const statusText = computed(() => {
   if (props.error) return 'Failed'
   if (props.loading) return 'Starting…'
+  if (loginStatus.value === 'starting' || loginStatus.value === 'signing_in') return 'Signing in…'
+  if (loginStatus.value === 'verifying') return 'Checking email…'
   if (props.session?.exitIp) return `via ${props.session.exitIp}`
   return 'Ready'
 })
+
+const loginLabel = computed(() => {
+  switch (loginStatus.value) {
+    case 'starting':
+    case 'signing_in':
+      return 'Signing in…'
+    case 'verifying':
+      return 'Email code'
+    case 'success':
+      return 'Signed in'
+    case 'checkpoint':
+      return 'Checkpoint'
+    case 'failed':
+      return 'Failed'
+    case 'error':
+      return 'Error'
+    default:
+      return loginMessage.value ? loginMessage.value : ''
+  }
+})
+
+const loginChipClass = computed(() => {
+  if (loginStatus.value === 'success') return 'is-ok'
+  if (loginStatus.value === 'failed' || loginStatus.value === 'error') return 'is-bad'
+  if (loginStatus.value === 'checkpoint' || loginStatus.value === 'verifying') return 'is-warn'
+  return ''
+})
+
+const canRetryLogin = computed(() =>
+  ['failed', 'error', 'checkpoint'].includes(loginStatus.value),
+)
+
+const busyLogin = computed(() =>
+  ['starting', 'signing_in', 'verifying'].includes(loginStatus.value),
+)
+
+watch(
+  () => [props.open, props.session?.sessionUrl],
+  () => {
+    loginStatus.value = props.session?.loginStatus || ''
+    loginMessage.value = props.session?.loginMessage || ''
+    if (props.open && props.session?.sessionUrl && busyLogin.value) {
+      startLoginPoll()
+    } else if (!props.open || !props.session?.sessionUrl) {
+      stopLoginPoll()
+    }
+  },
+  { immediate: true },
+)
+
+async function pullLoginStatus() {
+  if (!props.session?.sessionUrl) return
+  try {
+    const data = await getAccountSessionStatus(props.session.sessionUrl)
+    if (!data) return
+    loginStatus.value = data.loginStatus || ''
+    loginMessage.value = data.loginMessage || ''
+    if (!['starting', 'signing_in', 'verifying'].includes(loginStatus.value)) {
+      stopLoginPoll()
+    }
+  } catch (_) {
+    // Keep the last known status if a poll fails mid-login.
+  }
+}
+
+function startLoginPoll() {
+  stopLoginPoll()
+  pullLoginStatus()
+  pollTimer = window.setInterval(pullLoginStatus, 2000)
+}
+
+function stopLoginPoll() {
+  if (pollTimer) {
+    window.clearInterval(pollTimer)
+    pollTimer = 0
+  }
+}
+
+async function retryLogin() {
+  if (!props.session?.sessionUrl) return
+  try {
+    const data = await retryAccountLogin(props.session.sessionUrl)
+    loginStatus.value = data?.loginStatus || 'starting'
+    loginMessage.value = data?.loginMessage || 'Retrying login…'
+    startLoginPoll()
+    notifySuccess('Retrying Facebook login')
+  } catch (err) {
+    notifyError(err?.message || 'Could not retry login')
+  }
+}
+
+onUnmounted(stopLoginPoll)
 
 async function copyText(value, label) {
   const text = String(value || '').trim()
@@ -194,6 +312,20 @@ async function copyText(value, label) {
   flex: 1 1 160px;
 }
 
+.chip.is-ok {
+  border-color: color-mix(in srgb, var(--viper-500) 45%, transparent);
+  background: var(--viper-dim);
+}
+
+.chip.is-bad {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--bg-danger);
+}
+
+.chip.is-warn {
+  border-color: color-mix(in srgb, var(--warning, #d4a017) 45%, transparent);
+}
+
 .chip__label {
   font-family: var(--mono);
   font-size: 9.5px;
@@ -232,7 +364,8 @@ async function copyText(value, label) {
   font-weight: 500;
 }
 
-.session__error {
+.session__error,
+.session__note {
   margin: 0;
   padding: 5px 8px;
   border-radius: var(--radius);
@@ -241,6 +374,18 @@ async function copyText(value, label) {
   color: var(--danger);
   font-size: 12px;
   flex-shrink: 0;
+}
+
+.session__note {
+  border-color: var(--hairline);
+  background: var(--panel-raised);
+  color: var(--text-dim);
+}
+
+.session__note.is-bad {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+  background: var(--bg-danger);
+  color: var(--danger);
 }
 
 .session__frame-wrap {

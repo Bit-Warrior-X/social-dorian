@@ -27,6 +27,14 @@ func main() {
 	}
 	defer db.Close()
 
+	authStore := newAuthStore(db)
+	if err := authStore.ensureSchema(); err != nil {
+		log.Fatalf("failed to prepare auth tables: %v", err)
+	}
+	if err := authStore.ensureAdmin(); err != nil {
+		log.Fatalf("failed to prepare admin user: %v", err)
+	}
+
 	proxyStore := newProxyStore(db)
 	accountStore := newAccountStore(db, proxyStore)
 	gmailStore := newGmailStore(db)
@@ -34,6 +42,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", handleHealth)
+	mux.HandleFunc("/api/auth/", authStore.handleAuth)
 	mux.HandleFunc("/api/geo/country", handleGeoCountry)
 	mux.HandleFunc("/api/dashboard", dashboardStore.handleDashboard)
 	mux.HandleFunc("/api/accounts", accountStore.handleAccounts)
@@ -43,7 +52,7 @@ func main() {
 	mux.HandleFunc("/api/proxies/", proxyStore.handleProxyByID)
 	mux.HandleFunc("/api/gmails", gmailStore.handleGmails)
 	mux.HandleFunc("/api/gmails/", gmailStore.handleGmailByID)
-	mux.HandleFunc("/api/sessions/", handleBrowseSessions)
+	mux.HandleFunc("/api/sessions/", accountStore.handleBrowseSessions)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -51,7 +60,7 @@ func main() {
 	}
 
 	log.Printf("Social Dorian API listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, corsMiddleware(mux)); err != nil {
+	if err := http.ListenAndServe(":"+port, corsMiddleware(authStore.wrap(mux))); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -81,9 +90,15 @@ func writeError(w http.ResponseWriter, status int, message string) {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = "*"
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Add("Vary", "Origin")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

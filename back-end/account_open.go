@@ -42,17 +42,19 @@ var platformURLs = map[string]string{
 }
 
 type AccountOpenResult struct {
-	SessionURL  string           `json:"sessionUrl"`
-	URL         string           `json:"url"`
-	ExitIP      string           `json:"exitIp"`
-	Proxy       AccountOpenProxy `json:"proxy"`
-	Platform    string           `json:"platform"`
-	AccountName string           `json:"accountName"`
-	Email       string           `json:"email"`
-	Password    string           `json:"password"`
-	Mode        string           `json:"mode"`
-	ProfileDir  string           `json:"profileDir"`
-	Reused      bool             `json:"reused"`
+	SessionURL    string           `json:"sessionUrl"`
+	URL           string           `json:"url"`
+	ExitIP        string           `json:"exitIp"`
+	Proxy         AccountOpenProxy `json:"proxy"`
+	Platform      string           `json:"platform"`
+	AccountName   string           `json:"accountName"`
+	Email         string           `json:"email"`
+	Password      string           `json:"password"`
+	Mode          string           `json:"mode"`
+	ProfileDir    string           `json:"profileDir"`
+	Reused        bool             `json:"reused"`
+	LoginStatus   string           `json:"loginStatus"`
+	LoginMessage  string           `json:"loginMessage"`
 }
 
 type AccountOpenProxy struct {
@@ -65,19 +67,23 @@ type AccountOpenProxy struct {
 }
 
 type browseSession struct {
-	Token      string
-	Account    Account
-	Proxy      Proxy
-	StartURL   string
-	ExitIP     string
-	CreatedAt  time.Time
-	Display    int
-	ProfileDir string
-	Forwarder  *http.Server
-	ForwardLn  net.Listener
-	Cmds       []*exec.Cmd
-	WSPort     int
-	VNCPort    int
+	Token        string
+	Account      Account
+	Proxy        Proxy
+	StartURL     string
+	ExitIP       string
+	CreatedAt    time.Time
+	Display      int
+	ProfileDir   string
+	Forwarder    *http.Server
+	ForwardLn    net.Listener
+	Cmds         []*exec.Cmd
+	WSPort       int
+	VNCPort      int
+	DebugPort    int
+	LoginStatus  string
+	LoginMessage string
+	loginMu      sync.Mutex
 }
 
 var (
@@ -108,6 +114,7 @@ func (s *AccountStore) open(id int) (AccountOpenResult, error) {
 	}
 
 	if existing := findBrowseSessionByAccount(account.ID); existing != nil {
+		s.ensureLogin(existing)
 		return openResultFromSession(existing, true), nil
 	}
 
@@ -149,6 +156,7 @@ func (s *AccountStore) open(id int) (AccountOpenResult, error) {
 	}
 
 	putBrowseSession(session)
+	s.ensureLogin(session)
 	return openResultFromSession(session, false), nil
 }
 
@@ -157,17 +165,20 @@ func openResultFromSession(session *browseSession, reused bool) AccountOpenResul
 	viewer := sessionPathPrefix + session.Token + "/vnc/vnc_lite.html" +
 		"?autoconnect=1&reconnect=1&reconnect_delay=2000&scale=true&path=" + url.QueryEscape(wsPath)
 
+	loginStatus, loginMessage := session.loginSnapshot()
 	return AccountOpenResult{
-		SessionURL:  viewer,
-		URL:         session.StartURL,
-		ExitIP:      session.ExitIP,
-		Platform:    session.Account.Platform,
-		AccountName: displayName(session.Account.FirstName, session.Account.LastName, session.Account.Email),
-		Email:       session.Account.Email,
-		Password:    session.Account.Password,
-		Mode:        "chromium",
-		ProfileDir:  session.ProfileDir,
-		Reused:      reused,
+		SessionURL:   viewer,
+		URL:          session.StartURL,
+		ExitIP:       session.ExitIP,
+		Platform:     session.Account.Platform,
+		AccountName:  displayName(session.Account.FirstName, session.Account.LastName, session.Account.Email),
+		Email:        session.Account.Email,
+		Password:     session.Account.Password,
+		Mode:         "chromium",
+		ProfileDir:   session.ProfileDir,
+		Reused:       reused,
+		LoginStatus:  loginStatus,
+		LoginMessage: loginMessage,
 		Proxy: AccountOpenProxy{
 			ID:       session.Proxy.ID,
 			Name:     session.Proxy.Name,
@@ -297,6 +308,14 @@ func startRemoteChromium(session *browseSession) error {
 	_ = wsLn.Close()
 	session.WSPort = wsPort
 
+	debugLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	debugPort := debugLn.Addr().(*net.TCPAddr).Port
+	_ = debugLn.Close()
+	session.DebugPort = debugPort
+
 	displayEnv := fmt.Sprintf("DISPLAY=:%d", display)
 	chromium := exec.Command(
 		"chromium",
@@ -307,6 +326,9 @@ func startRemoteChromium(session *browseSession) error {
 		"--no-default-browser-check",
 		"--disable-sync",
 		"--disable-features=TranslateUI",
+		"--remote-debugging-address=127.0.0.1",
+		"--remote-debugging-port="+strconv.Itoa(debugPort),
+		"--remote-allow-origins=*",
 		"--window-size=1280,800",
 		"--window-position=0,0",
 		"--user-data-dir="+profileDir,
@@ -361,7 +383,7 @@ func startRemoteChromium(session *browseSession) error {
 	return nil
 }
 
-func handleBrowseSessions(w http.ResponseWriter, r *http.Request) {
+func (s *AccountStore) handleBrowseSessions(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, sessionPathPrefix)
 	rest = strings.Trim(rest, "/")
 	if rest == "" {
@@ -389,6 +411,32 @@ func handleBrowseSessions(w http.ResponseWriter, r *http.Request) {
 
 	action := parts[1]
 	switch {
+	case action == "status":
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		writeJSON(w, http.StatusOK, openResultFromSession(session, true))
+	case action == "login":
+		if r.Method != http.MethodPost {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		session.loginMu.Lock()
+		if session.LoginStatus == loginStatusOK {
+			session.loginMu.Unlock()
+			writeJSON(w, http.StatusOK, openResultFromSession(session, true))
+			return
+		}
+		if session.LoginStatus == loginStatusStart || session.LoginStatus == loginStatusSignIn || session.LoginStatus == loginStatusVerify {
+			session.loginMu.Unlock()
+			writeJSON(w, http.StatusOK, openResultFromSession(session, true))
+			return
+		}
+		session.LoginStatus = ""
+		session.loginMu.Unlock()
+		s.ensureLogin(session)
+		writeJSON(w, http.StatusOK, openResultFromSession(session, true))
 	case action == "websockify" || strings.HasPrefix(action, "websockify/"):
 		proxySessionWebsockify(w, r, session)
 	case action == "vnc" || strings.HasPrefix(action, "vnc/"):

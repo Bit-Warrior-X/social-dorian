@@ -13,15 +13,12 @@
         <RouterView />
       </div>
     </div>
-
-    <AppNotifications />
   </div>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue'
 import { RouterView, useRoute } from 'vue-router'
-import AppNotifications from './AppNotifications.vue'
 import AppSidebar from './AppSidebar.vue'
 
 const route = useRoute()

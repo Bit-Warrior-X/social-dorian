@@ -23,7 +23,11 @@
         <i class="ti ti-settings" aria-hidden="true" />
         Settings
       </RouterLink>
-      <a href="#" class="navitem" @click.prevent>
+      <div v-if="currentUser" class="sidebar__user">
+        <span class="sidebar__user-name">{{ currentUser.name || 'Admin' }}</span>
+        <span class="sidebar__user-email">{{ currentUser.email }}</span>
+      </div>
+      <a href="#" class="navitem" @click.prevent="signOut">
         <i class="ti ti-logout" aria-hidden="true" />
         Log out
       </a>
@@ -32,10 +36,17 @@
 </template>
 
 <script setup>
-import { RouterLink, useRoute } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { currentUser, logout } from '../api/auth'
 import DorianMark from './DorianMark.vue'
 
 const route = useRoute()
+const router = useRouter()
+
+async function signOut() {
+  await logout()
+  await router.replace({ name: 'login' })
+}
 
 const navItems = [
   { to: '/dashboard', icon: 'ti-layout-dashboard', label: 'Dashboard' },
@@ -118,6 +129,27 @@ const navItems = [
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.sidebar__user {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px 10px;
+}
+
+.sidebar__user-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.sidebar__user-email {
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 800px) {
