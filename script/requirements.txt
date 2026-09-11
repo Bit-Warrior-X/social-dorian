@@ -1,0 +1,2 @@
+# Python deps for Social Dorian Facebook workers (fb_*.py)
+selenium>=4.8,<5

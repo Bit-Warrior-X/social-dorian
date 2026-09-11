@@ -60,7 +60,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="gmail in filteredGmails" :key="gmail.id">
+              <tr v-for="gmail in pageItems" :key="gmail.id">
                 <td>
                   <div class="stack-cell">
                     <div class="stack-cell__primary">{{ gmailDisplayName(gmail) }}</div>
@@ -153,6 +153,15 @@
           </table>
         </div>
         <p v-if="filteredGmails.length === 0" class="empty">No Gmail mailboxes match your filters.</p>
+        <PaginationBar
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :total-pages="totalPages"
+          :from="from"
+          :to="to"
+          :page-size-options="pageSizeOptions"
+        />
       </template>
     </div>
 
@@ -180,12 +189,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import GmailFormModal from '../components/GmailFormModal.vue'
+import PaginationBar from '../components/PaginationBar.vue'
 import { createGmail, deleteGmail, getGmailPinCode, listGmails, updateGmail } from '../api/gmails'
 import { useNotify } from '../composables/useNotify'
+import { usePagination } from '../composables/usePagination'
 import { GMAIL_STATUSES, gmailDisplayName, gmailStatusLabel } from '../constants/gmails'
 
 const { notifySuccess, notifyError } = useNotify()
@@ -235,6 +246,20 @@ const filteredGmails = computed(() => {
       .includes(q)
   })
 })
+
+const {
+  page,
+  pageSize,
+  pageItems,
+  total,
+  totalPages,
+  from,
+  to,
+  pageSizeOptions,
+  reset: resetPage,
+} = usePagination(filteredGmails)
+
+watch([query, statusFilter], resetPage)
 
 const deleteMessage = computed(() => {
   if (!deleting.value) return ''

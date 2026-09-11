@@ -324,13 +324,7 @@ class FacebookBrowser(FacebookLogin):
         else:
             time.sleep(2)
 
-        if self.driver:
-            try:
-                self.driver.quit()
-            except Exception:
-                pass
-            self.driver = None
-
+        self.close_driver()
         return ok
 
 

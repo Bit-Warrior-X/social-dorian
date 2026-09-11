@@ -39,6 +39,10 @@
           <i class="ti ti-flag" aria-hidden="true" />
           Report
         </button>
+        <button class="btn" type="button" @click="openTask('reply', selectedIds)">
+          <i class="ti ti-message" aria-hidden="true" />
+          Reply
+        </button>
         <button class="btn" type="button" @click="openTask('post', selectedIds)">
           <i class="ti ti-pencil-plus" aria-hidden="true" />
           Post
@@ -57,6 +61,10 @@
         <button class="btn" type="button" @click="openTask('post')">
           <i class="ti ti-pencil-plus" aria-hidden="true" />
           New post
+        </button>
+        <button class="btn" type="button" @click="openTask('reply')">
+          <i class="ti ti-message" aria-hidden="true" />
+          Reply / comment
         </button>
         <button class="btn" type="button" @click="openTask('report')">
           <i class="ti ti-flag" aria-hidden="true" />
@@ -114,7 +122,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="account in filteredAccounts" :key="account.id">
+              <tr v-for="account in pageItems" :key="account.id">
                 <td>
                   <input
                     v-model="selectedIds"
@@ -200,6 +208,9 @@
                       <button type="button" @click="rowAction(() => openTask('login_test', [account.id]))">
                         Force refresh / Login test
                       </button>
+                      <button type="button" @click="rowAction(() => openTask('reply', [account.id]))">
+                        Reply / comment
+                      </button>
                       <button type="button" @click="rowAction(() => openTask('browse', [account.id]))">
                         Run activity simulation
                       </button>
@@ -215,6 +226,15 @@
           </table>
         </div>
         <p v-if="filteredAccounts.length === 0" class="empty">No accounts match your filters.</p>
+        <PaginationBar
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :total-pages="totalPages"
+          :from="from"
+          :to="to"
+          :page-size-options="pageSizeOptions"
+        />
       </template>
     </div>
 
@@ -258,16 +278,19 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AccountFormModal from '../components/AccountFormModal.vue'
 import DeleteConfirmModal from '../components/DeleteConfirmModal.vue'
 import NewTaskModal from '../components/NewTaskModal.vue'
 import OpenAccountModal from '../components/OpenAccountModal.vue'
+import PaginationBar from '../components/PaginationBar.vue'
 import { createAccount, closeAccountSession, deleteAccount, listAccounts, openAccountSession, updateAccount } from '../api/accounts'
 import { listProxies } from '../api/proxies'
 import { createTask, getBusyAccounts } from '../api/tasks'
 import { useNotify } from '../composables/useNotify'
+import { usePagination } from '../composables/usePagination'
+import { requestTaskWatch } from '../composables/useTaskWatch'
 import {
   PLATFORMS,
   STATUSES,
@@ -343,6 +366,20 @@ const filteredAccounts = computed(() => {
   })
 })
 
+const {
+  page,
+  pageSize,
+  pageItems,
+  total,
+  totalPages,
+  from,
+  to,
+  pageSizeOptions,
+  reset: resetPage,
+} = usePagination(filteredAccounts)
+
+watch([query, platformFilter, statusFilter], resetPage)
+
 const allFilteredSelected = computed(() => {
   const ids = filteredAccounts.value.map((account) => account.id)
   return ids.length > 0 && ids.every((id) => selectedIds.value.includes(id))
@@ -406,6 +443,9 @@ async function launchTask(payload) {
     taskModalOpen.value = false
     selectedIds.value = []
     notifySuccess(`Launched ${taskTypeMeta(task.type).label} #${task.id}`)
+    if (payload.showBrowser) {
+      requestTaskWatch(task.id)
+    }
     await router.push('/tasks/active')
   } catch (err) {
     taskError.value = err.message || 'Could not launch task'

@@ -1,13 +1,15 @@
 -- Tasks / campaigns engine
 CREATE TABLE IF NOT EXISTS `tasks` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `type` ENUM('report','post','browse','login_test') NOT NULL,
+  `type` ENUM('report','post','browse','login_test','reply') NOT NULL,
   `title` VARCHAR(255) NOT NULL DEFAULT '',
   `target_url` TEXT NOT NULL,
+  `content` TEXT NOT NULL,
   `status` ENUM('pending','queued','running','completed','failed','cancelled') NOT NULL DEFAULT 'pending',
   `delay_min_sec` INT UNSIGNED NOT NULL DEFAULT 5,
   `delay_max_sec` INT UNSIGNED NOT NULL DEFAULT 15,
   `use_account_proxy` TINYINT(1) NOT NULL DEFAULT 1,
+  `show_browser` TINYINT(1) NOT NULL DEFAULT 0,
   `created_by` VARCHAR(120) NOT NULL DEFAULT '',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `started_at` DATETIME NULL,

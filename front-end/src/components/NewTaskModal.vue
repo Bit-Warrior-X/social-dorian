@@ -105,8 +105,8 @@
             >
               <div class="type-card__top">
                 <i class="ti" :class="type.icon" aria-hidden="true" />
-                <span class="badge" :class="type.needsUrl ? 'badge--url' : 'badge--ready'">
-                  {{ type.needsUrl ? 'Needs URL' : 'No URL' }}
+                <span class="badge" :class="actionBadgeClass(type)">
+                  {{ actionBadgeLabel(type) }}
                 </span>
               </div>
               <strong>{{ type.label }}</strong>
@@ -122,7 +122,7 @@
             <i class="ti ti-chevron-right" aria-hidden="true" />
             <em>{{ taskTypeMeta(form.type).label }}</em>
             <i class="ti ti-chevron-right" aria-hidden="true" />
-            <em>{{ needsUrl ? 'Paste URL' : 'Pick accounts' }}</em>
+            <em>{{ nextStepHint }}</em>
             <i class="ti ti-chevron-right" aria-hidden="true" />
             <em>Launch</em>
           </div>
@@ -167,9 +167,162 @@
         <p v-if="stepError" class="error">{{ stepError }}</p>
       </section>
 
+      <!-- Reply: URL + comment -->
+      <section v-else-if="currentStep === 'reply'" class="panel">
+        <div class="compose-tip">
+          <i class="ti ti-message" aria-hidden="true" />
+          <p>
+            Paste the post link, then write the comment each selected account will leave.
+          </p>
+        </div>
+
+        <label class="field">
+          <span>Post URL <em class="req">required</em></span>
+          <div class="url-field">
+            <i class="ti ti-link" aria-hidden="true" />
+            <input
+              ref="urlInput"
+              v-model.trim="form.targetUrl"
+              class="url-field__input"
+              type="url"
+              inputmode="url"
+              autocomplete="url"
+              spellcheck="false"
+              :placeholder="urlPlaceholder"
+            />
+          </div>
+          <small class="help">
+            Open the post on {{ platformMeta(form.platform).label }}, copy the link, and paste it here.
+          </small>
+        </label>
+
+        <label class="field">
+          <span>Comment text <em class="req">required</em></span>
+          <textarea
+            ref="composeTextInput"
+            v-model="form.text"
+            class="compose-text"
+            rows="5"
+            maxlength="8000"
+            placeholder="Write the comment to post…"
+          />
+          <div class="field__row">
+            <small class="help">Same comment is posted from every selected account.</small>
+            <span class="muted">{{ form.text.length }}/8000</span>
+          </div>
+        </label>
+
+        <label class="field">
+          <span>Task name <em class="opt">optional</em></span>
+          <input v-model.trim="form.title" type="text" :placeholder="defaultTitle" />
+        </label>
+
+        <p v-if="stepError" class="error">{{ stepError }}</p>
+      </section>
+
+      <!-- Compose new post -->
+      <section v-else-if="currentStep === 'compose'" class="panel">
+        <div class="compose-tip">
+          <i class="ti" :class="platformMeta(form.platform).icon" aria-hidden="true" />
+          <p>{{ composeSpec.tip }}</p>
+        </div>
+
+        <label v-if="composeSpec.needsHeadline" class="field">
+          <span>{{ composeSpec.headlineLabel }} <em class="req">required</em></span>
+          <input
+            ref="composeHeadlineInput"
+            v-model.trim="form.headline"
+            type="text"
+            maxlength="120"
+            :placeholder="composeSpec.headlineLabel"
+          />
+        </label>
+
+        <label class="field">
+          <span>
+            {{ composeSpec.textLabel }}
+            <em class="req">required</em>
+          </span>
+          <textarea
+            ref="composeTextInput"
+            v-model="form.text"
+            class="compose-text"
+            rows="6"
+            :maxlength="composeSpec.maxText"
+            :placeholder="composeSpec.textPlaceholder"
+          />
+          <div class="field__row">
+            <small class="help">This is what each selected account will publish.</small>
+            <span class="muted" :class="{ 'is-warn': textOverLimit }">
+              {{ form.text.length }}/{{ composeSpec.maxText }}
+            </span>
+          </div>
+        </label>
+
+        <label class="field">
+          <span>
+            {{ composeSpec.needsMedia ? composeSpec.mediaLabel : 'Media' }}
+            <em v-if="composeSpec.needsMedia" class="req">required</em>
+            <em v-else class="opt">optional</em>
+          </span>
+          <div class="media-upload">
+            <input
+              ref="mediaFileInput"
+              class="media-upload__file"
+              type="file"
+              accept="image/*,video/*"
+              @change="onMediaFile"
+            />
+            <button class="btn" type="button" :disabled="uploadingMedia" @click="mediaFileInput?.click()">
+              <i class="ti" :class="uploadingMedia ? 'ti-loader-2 spin' : 'ti-upload'" aria-hidden="true" />
+              {{ uploadingMedia ? 'Uploading…' : 'Upload media' }}
+            </button>
+            <span class="muted">or paste a URL</span>
+          </div>
+          <div class="url-field">
+            <i class="ti ti-photo" aria-hidden="true" />
+            <input
+              v-model.trim="form.mediaUrl"
+              class="url-field__input"
+              type="url"
+              inputmode="url"
+              spellcheck="false"
+              :placeholder="composeSpec.mediaPlaceholder || 'https://…'"
+            />
+          </div>
+          <small class="help">
+            Upload an image/video to this server, or paste a public media URL.
+            <template v-if="mediaFileName"> Selected: {{ mediaFileName }}</template>
+          </small>
+        </label>
+
+        <label v-if="composeSpec.allowsLink" class="field">
+          <span>Attach link <em class="opt">optional</em></span>
+          <div class="url-field">
+            <i class="ti ti-link" aria-hidden="true" />
+            <input
+              v-model.trim="form.linkUrl"
+              class="url-field__input"
+              type="url"
+              inputmode="url"
+              spellcheck="false"
+              placeholder="https://example.com/article"
+            />
+          </div>
+        </label>
+
+        <label class="field">
+          <span>Task name <em class="opt">optional</em></span>
+          <input v-model.trim="form.title" type="text" :placeholder="defaultTitle" />
+          <small class="help">Shown in Active jobs and History so you can find this run later.</small>
+        </label>
+
+        <p v-if="stepError" class="error">{{ stepError }}</p>
+      </section>
+
       <!-- Accounts -->
       <section v-else-if="currentStep === 'accounts'" class="panel">
-        <label v-if="!needsUrl" class="field">
+        <label v-if="!needsUrl && !needsCompose && !needsReply" class="field">
           <span>Task name <em class="opt">optional</em></span>
           <input v-model.trim="form.title" type="text" :placeholder="defaultTitle" />
         </label>
@@ -226,7 +379,7 @@
           </div>
 
           <div class="account-list">
-            <label v-for="account in filteredAccounts" :key="account.id" class="account-row">
+            <label v-for="account in pageItems" :key="account.id" class="account-row">
               <input v-model="selectedIds" type="checkbox" :value="account.id" />
               <i class="ti" :class="platformMeta(account.platform).icon" aria-hidden="true" />
               <div class="account-row__body">
@@ -239,6 +392,15 @@
               No accounts match your search. Try clearing filters.
             </p>
           </div>
+          <PaginationBar
+            v-model:page="page"
+            v-model:page-size="pageSize"
+            :total="total"
+            :total-pages="totalPages"
+            :from="from"
+            :to="to"
+            :page-size-options="pageSizeOptions"
+          />
         </template>
 
         <p v-if="stepError" class="error">{{ stepError }}</p>
@@ -271,8 +433,18 @@
               <dd>{{ taskTypeMeta(form.type).label }}</dd>
             </div>
             <div>
-              <dt>Target</dt>
-              <dd class="mono">{{ needsUrl ? form.targetUrl : 'Not required for this action' }}</dd>
+              <dt>{{ needsCompose || needsReply ? 'Content' : 'Target' }}</dt>
+              <dd :class="{ mono: needsUrl || needsReply }">
+                <template v-if="needsUrl">{{ form.targetUrl }}</template>
+                <template v-else-if="needsReply">
+                  <span class="mono">{{ form.targetUrl }}</span>
+                  <span class="compose-preview">{{ composePreview }}</span>
+                </template>
+                <template v-else-if="needsCompose">
+                  <span class="compose-preview">{{ composePreview }}</span>
+                </template>
+                <template v-else>Not required for this action</template>
+              </dd>
             </div>
             <div>
               <dt>Accounts</dt>
@@ -290,10 +462,24 @@
           </div>
         </div>
 
+        <label class="show-browser">
+          <input v-model="form.showBrowser" type="checkbox" />
+          <div>
+            <strong>Show browser window</strong>
+            <span>
+              Opens a live view dialog as soon as the job starts (same remote window as Social accounts → Open).
+              Leave off for faster headless runs.
+            </span>
+          </div>
+        </label>
+
         <details class="advanced">
           <summary>
             <span>Advanced run settings</span>
-            <small>Delay {{ form.delayMinSec }}–{{ form.delayMaxSec }}s · Proxy {{ form.useAccountProxy ? 'on' : 'off' }}</small>
+            <small>
+              Delay {{ form.delayMinSec }}–{{ form.delayMaxSec }}s · Proxy {{ form.useAccountProxy ? 'on' : 'off' }}
+              · Window {{ form.showBrowser ? 'shown' : 'hidden' }}
+            </small>
           </summary>
           <div class="settings">
             <label class="field">
@@ -343,6 +529,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import ModalDialog from './ModalDialog.vue'
+import PaginationBar from './PaginationBar.vue'
 import {
   PLATFORMS,
   STATUSES,
@@ -350,7 +537,9 @@ import {
   platformMeta,
   statusLabel,
 } from '../constants/accounts'
-import { TASK_TYPES, taskTypeMeta } from '../constants/tasks'
+import { TASK_TYPES, postComposeSpec, taskTypeMeta } from '../constants/tasks'
+import { uploadMedia } from '../api/users'
+import { usePagination } from '../composables/usePagination'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -367,24 +556,52 @@ const emit = defineEmits(['close', 'submit'])
 const stepIndex = ref(0)
 const stepError = ref('')
 const urlInput = ref(null)
+const composeTextInput = ref(null)
+const composeHeadlineInput = ref(null)
+const mediaFileInput = ref(null)
+const uploadingMedia = ref(false)
+const mediaFileName = ref('')
 const form = reactive({
   platform: '',
   type: 'report',
   title: '',
   targetUrl: '',
+  headline: '',
+  text: '',
+  linkUrl: '',
+  mediaUrl: '',
   delayMinSec: 5,
   delayMaxSec: 15,
   useAccountProxy: true,
+  showBrowser: false,
 })
 const selectedIds = ref([])
 const accountQuery = ref('')
 const statusFilter = ref('')
 
 const needsUrl = computed(() => taskTypeMeta(form.type).needsUrl)
+const needsCompose = computed(() => taskTypeMeta(form.type).needsCompose)
+const needsReply = computed(() => taskTypeMeta(form.type).needsReply)
+const composeSpec = computed(() => postComposeSpec(form.platform))
+const textOverLimit = computed(() => form.text.length > composeSpec.value.maxText)
+const composePreview = computed(() => {
+  const headline = form.headline.trim()
+  const text = form.text.trim().replace(/\s+/g, ' ')
+  if (headline && text) return `${headline} — ${text.slice(0, 120)}${text.length > 120 ? '…' : ''}`
+  return text.slice(0, 160) + (text.length > 160 ? '…' : '')
+})
+const nextStepHint = computed(() => {
+  if (needsUrl.value) return 'Paste URL'
+  if (needsReply.value) return 'Write reply'
+  if (needsCompose.value) return 'Write post'
+  return 'Pick accounts'
+})
 
 const visibleSteps = computed(() => {
   const steps = [{ key: 'setup', label: 'Setup', hint: 'Platform & action' }]
   if (needsUrl.value) steps.push({ key: 'target', label: 'Target', hint: 'Paste the URL' })
+  if (needsReply.value) steps.push({ key: 'reply', label: 'Reply', hint: 'URL & comment' })
+  if (needsCompose.value) steps.push({ key: 'compose', label: 'Content', hint: 'Write the post' })
   steps.push(
     { key: 'accounts', label: 'Accounts', hint: 'Who will run it' },
     { key: 'review', label: 'Launch', hint: 'Confirm & start' },
@@ -440,6 +657,20 @@ const filteredAccounts = computed(() => {
   })
 })
 
+const {
+  page,
+  pageSize,
+  pageItems,
+  total,
+  totalPages,
+  from,
+  to,
+  pageSizeOptions,
+  reset: resetPage,
+} = usePagination(filteredAccounts, { pageSize: 10 })
+
+watch([accountQuery, statusFilter, () => form.platform], resetPage)
+
 const filteredIds = computed(() => filteredAccounts.value.map((account) => account.id))
 
 const activeAccountIds = computed(() =>
@@ -461,13 +692,25 @@ const coach = computed(() => {
       return {
         icon: 'ti-map-pin',
         title: 'Start with where and what',
-        body: 'Choose the social network, then the action. We’ll only ask for a URL if that action needs one.',
+        body: 'Choose the social network, then the action. We’ll ask for a URL or post content only when needed.',
       }
     case 'target':
       return {
         icon: 'ti-link',
         title: 'Paste the post link',
         body: `This ${taskTypeMeta(form.type).label.toLowerCase()} needs a public ${platformMeta(form.platform).label} URL.`,
+      }
+    case 'reply':
+      return {
+        icon: 'ti-message',
+        title: 'Write the comment',
+        body: `Each selected ${platformMeta(form.platform).label} account will leave this comment on the post.`,
+      }
+    case 'compose':
+      return {
+        icon: 'ti-pencil-plus',
+        title: `Write your ${platformMeta(form.platform).label} post`,
+        body: composeSpec.value.tip,
       }
     case 'accounts':
       return {
@@ -488,6 +731,8 @@ const primaryLabel = computed(() => {
   const next = visibleSteps.value[stepIndex.value + 1]
   if (!next) return 'Launch task'
   if (next.key === 'target') return 'Continue to URL'
+  if (next.key === 'reply') return 'Write reply'
+  if (next.key === 'compose') return 'Write post'
   if (next.key === 'accounts') return 'Choose accounts'
   if (next.key === 'review') return 'Review & launch'
   return 'Next'
@@ -499,6 +744,47 @@ const primaryDisabled = computed(() => {
   if (currentStep.value === 'accounts') return platformAccounts.value.length === 0
   return false
 })
+
+function actionBadgeLabel(type) {
+  if (type.needsUrl) return 'Needs URL'
+  if (type.needsReply) return 'URL + comment'
+  if (type.needsCompose) return 'Write post'
+  return 'Ready'
+}
+
+function actionBadgeClass(type) {
+  if (type.needsUrl) return 'badge--url'
+  if (type.needsReply) return 'badge--compose'
+  if (type.needsCompose) return 'badge--compose'
+  return 'badge--ready'
+}
+
+function isHttpUrl(value) {
+  if (String(value || '').startsWith('/api/uploads/')) return true
+  try {
+    const parsed = new URL(value)
+    return ['http:', 'https:'].includes(parsed.protocol)
+  } catch (_) {
+    return false
+  }
+}
+
+async function onMediaFile(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  uploadingMedia.value = true
+  stepError.value = ''
+  try {
+    const data = await uploadMedia(file)
+    form.mediaUrl = data.url || ''
+    mediaFileName.value = data.filename || file.name
+  } catch (err) {
+    stepError.value = err.message || 'Upload failed'
+  } finally {
+    uploadingMedia.value = false
+    if (mediaFileInput.value) mediaFileInput.value.value = ''
+  }
+}
 
 function pickPlatform(value) {
   if (form.platform === value) return
@@ -562,12 +848,18 @@ function resetWizard() {
   form.platform = bestDefaultPlatform()
   form.title = ''
   form.targetUrl = ''
+  form.headline = ''
+  form.text = ''
+  form.linkUrl = ''
+  form.mediaUrl = ''
   form.delayMinSec = 5
   form.delayMaxSec = 15
   form.useAccountProxy = true
+  form.showBrowser = false
   selectedIds.value = [...(props.initialAccountIds || [])]
   accountQuery.value = ''
   statusFilter.value = ''
+  mediaFileName.value = ''
 }
 
 function jumpTo(index) {
@@ -600,14 +892,56 @@ function validateStep() {
       stepError.value = 'Paste a post URL to continue'
       return false
     }
-    try {
-      const parsed = new URL(url)
-      if (!['http:', 'https:'].includes(parsed.protocol)) {
-        stepError.value = 'URL must start with http:// or https://'
+    if (!isHttpUrl(url)) {
+      stepError.value = 'URL must start with http:// or https://'
+      return false
+    }
+  }
+
+  if (currentStep.value === 'reply') {
+    const url = form.targetUrl.trim()
+    if (!url) {
+      stepError.value = 'Paste a post URL to continue'
+      return false
+    }
+    if (!isHttpUrl(url)) {
+      stepError.value = 'URL must start with http:// or https://'
+      return false
+    }
+    if (!form.text.trim()) {
+      stepError.value = 'Write a comment to continue'
+      return false
+    }
+  }
+
+  if (currentStep.value === 'compose') {
+    const spec = composeSpec.value
+    if (spec.needsHeadline && !form.headline.trim()) {
+      stepError.value = `${spec.headlineLabel} is required`
+      return false
+    }
+    const text = form.text.trim()
+    if (!text) {
+      stepError.value = `${spec.textLabel} is required`
+      return false
+    }
+    if (text.length > spec.maxText) {
+      stepError.value = `${spec.textLabel} must be ${spec.maxText} characters or fewer`
+      return false
+    }
+    if (spec.needsMedia) {
+      const media = form.mediaUrl.trim()
+      if (!media) {
+        stepError.value = `${spec.mediaLabel} is required`
         return false
       }
-    } catch (_) {
-      stepError.value = 'That doesn’t look like a valid URL'
+      if (!isHttpUrl(media)) {
+        stepError.value = 'Media URL must start with http:// or https://'
+        return false
+      }
+    }
+    if (form.linkUrl.trim() && !isHttpUrl(form.linkUrl.trim())) {
+      stepError.value = 'Attach link must start with http:// or https://'
       return false
     }
   }
@@ -638,16 +972,31 @@ function onPrimary() {
     stepIndex.value += 1
     return
   }
-  emit('submit', {
+  const payload = {
     platform: form.platform,
     type: form.type,
     title: form.title || defaultTitle.value,
-    targetUrl: needsUrl.value ? form.targetUrl.trim() : '',
+    targetUrl: needsUrl.value || needsReply.value ? form.targetUrl.trim() : '',
     accountIds: selectedIds.value.map(Number),
     delayMinSec: Number(form.delayMinSec) || 5,
     delayMaxSec: Number(form.delayMaxSec) || 15,
     useAccountProxy: Boolean(form.useAccountProxy),
-  })
+    showBrowser: Boolean(form.showBrowser),
+  }
+  if (needsCompose.value) {
+    payload.content = {
+      text: form.text.trim(),
+      headline: form.headline.trim(),
+      linkUrl: form.linkUrl.trim(),
+      mediaUrl: form.mediaUrl.trim(),
+    }
+  }
+  if (needsReply.value) {
+    payload.content = {
+      text: form.text.trim(),
+    }
+  }
+  emit('submit', payload)
 }
 
 watch(
@@ -657,16 +1006,21 @@ watch(
   },
 )
 
-watch(needsUrl, () => {
+watch([needsUrl, needsCompose, needsReply], () => {
   if (stepIndex.value > visibleSteps.value.length - 1) {
     stepIndex.value = visibleSteps.value.length - 1
   }
 })
 
 watch(currentStep, async (key) => {
-  if (key === 'target') {
+  if (key === 'target' || key === 'reply') {
     await nextTick()
     urlInput.value?.focus()
+  }
+  if (key === 'compose') {
+    await nextTick()
+    if (composeSpec.value.needsHeadline) composeHeadlineInput.value?.focus()
+    else composeTextInput.value?.focus()
   }
 })
 </script>
@@ -675,15 +1029,21 @@ watch(currentStep, async (key) => {
 .wizard {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+}
+
+.progress {
+  flex-shrink: 0;
 }
 
 .progress__track {
-  height: 4px;
+  height: 3px;
   border-radius: 999px;
   background: var(--panel-raised);
   overflow: hidden;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .progress__fill {
@@ -706,7 +1066,7 @@ watch(currentStep, async (key) => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: 0.5px solid var(--hairline);
   border-radius: 10px;
   background: var(--bg);
@@ -769,10 +1129,11 @@ watch(currentStep, async (key) => {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 0.5px solid color-mix(in srgb, var(--viper-500) 28%, transparent);
   border-radius: 12px;
   background: color-mix(in srgb, var(--viper-dim) 70%, var(--panel));
+  flex-shrink: 0;
 }
 
 .coach .ti {
@@ -797,8 +1158,11 @@ watch(currentStep, async (key) => {
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 300px;
+  gap: 10px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .field {
@@ -837,7 +1201,7 @@ watch(currentStep, async (key) => {
 
 .platform-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -845,7 +1209,7 @@ watch(currentStep, async (key) => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px;
+  padding: 10px;
   border: 0.5px solid var(--hairline);
   border-radius: 10px;
   background: var(--bg);
@@ -898,17 +1262,17 @@ watch(currentStep, async (key) => {
 
 .type-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
 .type-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   align-items: flex-start;
   text-align: left;
-  padding: 14px;
+  padding: 10px 12px;
   border: 0.5px solid var(--hairline);
   border-radius: 10px;
   background: var(--bg);
@@ -962,9 +1326,75 @@ watch(currentStep, async (key) => {
   color: var(--gold-500);
 }
 
+.badge--compose {
+  background: color-mix(in srgb, var(--viper-dim) 80%, var(--panel));
+  color: var(--viper-400);
+}
+
 .badge--ready {
   background: var(--viper-dim);
   color: var(--viper-400);
+}
+
+.compose-tip {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 0.5px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.compose-tip .ti {
+  font-size: 18px;
+  color: var(--viper-400);
+  margin-top: 1px;
+}
+
+.compose-tip p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.media-upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.media-upload__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.compose-text {
+  resize: vertical;
+  min-height: 88px;
+  max-height: 180px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.compose-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  font-weight: 500;
+}
+
+.muted.is-warn {
+  color: var(--gold-500);
 }
 
 .path-preview {
@@ -1122,11 +1552,17 @@ watch(currentStep, async (key) => {
 }
 
 .account-list {
-  max-height: 240px;
+  max-height: min(200px, 28vh);
   overflow: auto;
   border: 0.5px solid var(--hairline);
   border-radius: 10px;
   background: var(--bg);
+}
+
+.account-list + :deep(.pager) {
+  margin-top: 8px;
+  border: 0.5px solid var(--hairline);
+  border-radius: 10px;
 }
 
 .account-row {
@@ -1286,6 +1722,36 @@ watch(currentStep, async (key) => {
   gap: 6px;
 }
 
+.show-browser {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 0.5px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.show-browser input {
+  margin-top: 3px;
+}
+
+.show-browser strong {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.show-browser span {
+  display: block;
+  margin-top: 3px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.4;
+  font-weight: 500;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -1365,6 +1831,8 @@ watch(currentStep, async (key) => {
   gap: 8px;
   padding-top: 4px;
   border-top: 0.5px solid var(--hairline);
+  flex-shrink: 0;
+  margin-top: auto;
 }
 
 .actions__right {
@@ -1401,6 +1869,13 @@ watch(currentStep, async (key) => {
     display: none;
   }
 
+  .coach p {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
   .actions {
     flex-direction: column;
   }
@@ -1411,6 +1886,25 @@ watch(currentStep, async (key) => {
 
   .actions__right .btn {
     flex: 1;
+  }
+}
+
+@media (max-height: 780px) {
+  .coach {
+    display: none;
+  }
+
+  .steps__copy small {
+    display: none;
+  }
+
+  .path-preview {
+    display: none;
+  }
+
+  .compose-text {
+    min-height: 72px;
+    max-height: 140px;
   }
 }
 </style>

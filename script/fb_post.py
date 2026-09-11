@@ -463,7 +463,7 @@ class FacebookPoster(FacebookLogin):
         parts = s.split("'")
         return "concat(" + ", \"'\", ".join(f"'{p}'" for p in parts) + ")"
 
-    def create_post(self, text: str) -> bool:
+    def create_post(self, text: str, media_path: Optional[str] = None) -> bool:
         logger.info("Opening Facebook home...")
         self.driver.get(HOME_URL)
         time.sleep(4)
@@ -499,6 +499,11 @@ class FacebookPoster(FacebookLogin):
         if not self._type_post(box, text):
             return False
 
+        if media_path:
+            if not self._attach_media(media_path):
+                logger.error("Failed to attach media: %s", media_path)
+                return False
+
         time.sleep(1)
         if not self._click_post_button():
             logger.error("Post button not found / not clickable")
@@ -511,6 +516,30 @@ class FacebookPoster(FacebookLogin):
         logger.info("Post clicked — confirming publish...")
         return self.confirm_post_published(text[:80])
 
+    def _attach_media(self, media_path: str) -> bool:
+        path = os.path.abspath(media_path)
+        if not os.path.isfile(path):
+            logger.error("Media file missing: %s", path)
+            return False
+        logger.info("Attaching media %s", path)
+        try:
+            inputs = self.driver.find_elements(By.CSS_SELECTOR, "input[type='file']")
+            for el in inputs:
+                try:
+                    self.driver.execute_script(
+                        "arguments[0].style.display='block'; arguments[0].style.opacity=1;",
+                        el,
+                    )
+                    el.send_keys(path)
+                    time.sleep(3)
+                    logger.info("Media attached via file input")
+                    return True
+                except Exception:
+                    continue
+        except Exception as exc:
+            logger.error("Media attach error: %s", exc)
+        return False
+
     def run_post(
         self,
         message_file: str = DEFAULT_MESSAGE_FILE,
@@ -522,6 +551,7 @@ class FacebookPoster(FacebookLogin):
         keep_open: bool = True,
         auto_verify: bool = True,
         profile_dir: Optional[str] = None,
+        media_path: Optional[str] = None,
     ) -> bool:
         loaded = self.load_post_file(message_file)
         if not loaded:
@@ -558,7 +588,7 @@ class FacebookPoster(FacebookLogin):
                 logger.error("Still on login page after ensure_logged_in")
                 ok = False
             else:
-                ok = self.create_post(text)
+                ok = self.create_post(text, media_path=media_path)
 
         if keep_open and not headless:
             logger.info("Browser left open — press Ctrl+C when done.")
@@ -570,13 +600,7 @@ class FacebookPoster(FacebookLogin):
         else:
             time.sleep(2)
 
-        if self.driver:
-            try:
-                self.driver.quit()
-            except Exception:
-                pass
-            self.driver = None
-
+        self.close_driver()
         return ok
 
 
@@ -587,6 +611,7 @@ def main() -> int:
         default=DEFAULT_MESSAGE_FILE,
         help=f"Text file to post (default: {DEFAULT_MESSAGE_FILE})",
     )
+    parser.add_argument("--media", default=None, help="Optional image/video file to attach")
     parser.add_argument("--id", dest="account_id", help="Account id from accounts.csv")
     parser.add_argument("--email", help="Account email from accounts.csv")
     parser.add_argument("--index", type=int, default=0)
@@ -608,6 +633,7 @@ def main() -> int:
         keep_open=not args.no_keep_open,
         auto_verify=not args.no_verify,
         profile_dir=args.profile_dir,
+        media_path=args.media,
     )
     return 0 if ok else 1
 

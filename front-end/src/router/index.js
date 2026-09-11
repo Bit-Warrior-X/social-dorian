@@ -6,9 +6,10 @@ import CreditsPage from '../views/CreditsPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import GmailsPage from '../views/GmailsPage.vue'
 import LoginPage from '../views/LoginPage.vue'
+import MonitorPage from '../views/MonitorPage.vue'
 import ProxiesPage from '../views/ProxiesPage.vue'
+import SettingsPage from '../views/SettingsPage.vue'
 import TasksPage from '../views/TasksPage.vue'
-import PlaceholderPage from '../views/PlaceholderPage.vue'
 
 const routes = [
   {
@@ -37,19 +38,8 @@ const routes = [
       },
       { path: '/tasks/active', name: 'tasks-active', component: TasksPage, props: { mode: 'active' } },
       { path: '/tasks/history', name: 'tasks-history', component: TasksPage, props: { mode: 'history' } },
-      {
-        path: '/monitor',
-        component: PlaceholderPage,
-        meta: {
-          title: 'Live feed',
-          description: 'Log stream of browse and automation activity across accounts.',
-        },
-      },
-      {
-        path: '/settings',
-        component: PlaceholderPage,
-        meta: { title: 'Settings', description: 'Workspace preferences and notifications.' },
-      },
+      { path: '/monitor', name: 'monitor', component: MonitorPage },
+      { path: '/settings', name: 'settings', component: SettingsPage },
     ],
   },
 ]

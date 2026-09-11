@@ -1,11 +1,9 @@
 package main
 
 import (
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"log"
-	"math/big"
 	"net/http"
 	"net/mail"
 	"strconv"
@@ -265,14 +263,32 @@ func (s *GmailStore) handleGmailByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		pin, err := generatePinCode(6)
+		item, found, err := s.get(id)
 		if err != nil {
-			log.Printf("generate pin code: %v", err)
-			writeError(w, http.StatusInternalServerError, "failed to generate pin code")
+			log.Printf("get gmail for pin: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to load gmail")
+			return
+		}
+		if !found {
+			writeError(w, http.StatusNotFound, "gmail not found")
 			return
 		}
 
-		// Persist the latest pin for auditability / later retrieval.
+		password := strings.TrimSpace(item.AppPassword)
+		if password == "" {
+			password = strings.TrimSpace(item.Password)
+		}
+		if password == "" {
+			writeError(w, http.StatusBadRequest, "gmail has no app password or password to fetch codes")
+			return
+		}
+
+		pin := fetchFacebookEmailCode(item.Email, password, 45, 0)
+		if pin == "" {
+			writeError(w, http.StatusBadGateway, "no verification code found in mailbox yet")
+			return
+		}
+
 		if _, err := s.db.Exec(`UPDATE gmails SET pin_code = ? WHERE id = ?`, pin, id); err != nil {
 			log.Printf("update pin code: %v", err)
 			writeError(w, http.StatusInternalServerError, "failed to update pin code")
@@ -433,23 +449,4 @@ func parseGmailPath(w http.ResponseWriter, path, prefix string) (int, string, bo
 	}
 
 	return id, action, true
-}
-
-func generatePinCode(length int) (string, error) {
-	if length < 4 {
-		return "", nil
-	}
-	if length > 12 {
-		length = 12
-	}
-
-	buf := make([]byte, length)
-	for i := 0; i < length; i++ {
-		n, err := rand.Int(rand.Reader, big.NewInt(10))
-		if err != nil {
-			return "", err
-		}
-		buf[i] = byte('0' + n.Int64())
-	}
-	return string(buf), nil
 }

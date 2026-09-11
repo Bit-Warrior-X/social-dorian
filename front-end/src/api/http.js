@@ -7,8 +7,12 @@ export class AuthError extends Error {
 
 export async function request(path, options = {}) {
   const headers = { ...(options.headers || {}) }
-  if (options.body && !headers['Content-Type']) {
+  const isForm = typeof FormData !== 'undefined' && options.body instanceof FormData
+  if (options.body && !headers['Content-Type'] && !isForm) {
     headers['Content-Type'] = 'application/json'
+  }
+  if (isForm && headers['Content-Type']) {
+    delete headers['Content-Type']
   }
 
   const res = await fetch(path, {

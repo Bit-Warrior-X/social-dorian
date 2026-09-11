@@ -308,6 +308,7 @@
                     <div class="stack">
                       <span class="account-cell__name">#{{ task.id }} {{ task.title }}</span>
                       <span v-if="task.targetUrl" class="sub mono-soft">{{ task.targetUrl }}</span>
+                      <span v-else-if="taskContentPreview(task)" class="sub">{{ taskContentPreview(task) }}</span>
                     </div>
                   </td>
                   <td>
@@ -356,11 +357,18 @@
                 <span>Select accounts and launch a report job</span>
               </div>
             </RouterLink>
+            <RouterLink class="quick" to="/tasks?new=reply">
+              <i class="ti ti-message" aria-hidden="true" />
+              <div>
+                <strong>Reply / comment</strong>
+                <span>Comment on a post URL from selected accounts</span>
+              </div>
+            </RouterLink>
             <RouterLink class="quick" to="/tasks?new=browse">
               <i class="ti ti-player-play" aria-hidden="true" />
               <div>
                 <strong>Browse feed</strong>
-                <span>Simulate activity across idle accounts</span>
+                <span>Browse feed activity across idle accounts</span>
               </div>
             </RouterLink>
             <RouterLink class="quick" to="/accounts">
@@ -466,7 +474,7 @@ import { STATUSES, platformMeta, proxyModeLabel, statusLabel } from '../constant
 import { COUNTRIES } from '../constants/countries'
 import { GMAIL_STATUSES, gmailStatusLabel } from '../constants/gmails'
 import { PROXY_STATUSES, protocolLabel, proxyStatusLabel } from '../constants/proxies'
-import { taskStatusLabel, taskTypeMeta } from '../constants/tasks'
+import { taskContentPreview, taskStatusLabel, taskTypeMeta } from '../constants/tasks'
 
 const REFRESH_MS = 30000
 

@@ -61,6 +61,11 @@ func main() {
 	mux.HandleFunc("/api/tasks/", taskStore.handleTaskByID)
 	mux.HandleFunc("/api/credits", taskStore.handleCredits)
 	mux.HandleFunc("/api/busy-accounts", taskStore.handleBusyAccounts)
+	mux.HandleFunc("/api/monitor/feed", taskStore.handleMonitorFeed)
+	mux.HandleFunc("/api/uploads", handleUploads)
+	mux.HandleFunc("/api/uploads/", handleUploads)
+	mux.HandleFunc("/api/users", authStore.handleUsers)
+	mux.HandleFunc("/api/users/", authStore.handleUserByID)
 
 	port := os.Getenv("PORT")
 	if port == "" {

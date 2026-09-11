@@ -78,7 +78,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="proxy in filteredProxies" :key="proxy.id">
+              <tr v-for="proxy in pageItems" :key="proxy.id">
                 <td>
                   <div class="stack-cell">
                     <div class="stack-cell__primary">{{ proxy.name }}</div>
@@ -169,6 +169,15 @@
           </table>
         </div>
         <p v-if="filteredProxies.length === 0" class="empty">No proxies match your filters.</p>
+        <PaginationBar
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :total-pages="totalPages"
+          :from="from"
+          :to="to"
+          :page-size-options="pageSizeOptions"
+        />
       </template>
     </div>
 
@@ -196,12 +205,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import PaginationBar from '../components/PaginationBar.vue'
 import ProxyFormModal from '../components/ProxyFormModal.vue'
 import { createProxy, checkAllProxies, checkProxy, deleteProxy, listProxies, updateProxy } from '../api/proxies'
 import { useNotify } from '../composables/useNotify'
+import { usePagination } from '../composables/usePagination'
 import { COUNTRIES, countryLabel } from '../constants/countries'
 import {
   PROXY_PROTOCOLS,
@@ -260,6 +271,20 @@ const filteredProxies = computed(() => {
       .includes(q)
   })
 })
+
+const {
+  page,
+  pageSize,
+  pageItems,
+  total,
+  totalPages,
+  from,
+  to,
+  pageSizeOptions,
+  reset: resetPage,
+} = usePagination(filteredProxies)
+
+watch([query, protocolFilter, statusFilter], resetPage)
 
 const deleteMessage = computed(() => {
   if (!deleting.value) return ''

@@ -24,6 +24,7 @@ import random
 import re
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.parse
 from typing import Optional, Tuple
@@ -39,7 +40,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-DATA_FILE = "accounts.csv"
+DATA_FILE = os.environ.get("DORIAN_ACCOUNTS_FILE", "accounts.csv")
 LOGIN_URL = "https://www.facebook.com/login"
 PROFILE_ME_URL = "https://www.facebook.com/me"
 
@@ -1047,6 +1048,32 @@ class FacebookLogin:
                 pass
             return "error"
 
+    def close_driver(self, timeout: float = 8.0) -> None:
+        """Quit Chrome without hanging the worker forever."""
+        driver = self.driver
+        self.driver = None
+        if not driver:
+            return
+
+        def _quit() -> None:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+            try:
+                service = getattr(driver, "service", None)
+                proc = getattr(service, "process", None) if service else None
+                if proc is not None and proc.poll() is None:
+                    proc.kill()
+            except Exception:
+                pass
+
+        thread = threading.Thread(target=_quit, daemon=True)
+        thread.start()
+        thread.join(timeout)
+        if thread.is_alive():
+            logger.warning("driver.quit() timed out after %.1fs — continuing", timeout)
+
     def run(
         self,
         account_id: Optional[str] = None,
@@ -1097,13 +1124,7 @@ class FacebookLogin:
         else:
             time.sleep(2)
 
-        if self.driver:
-            try:
-                self.driver.quit()
-            except Exception:
-                pass
-            self.driver = None
-
+        self.close_driver()
         return result
 
 

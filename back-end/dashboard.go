@@ -145,6 +145,7 @@ type DashboardRecentTask struct {
 	CreatedBy    string `json:"createdBy"`
 	CreatedAt    string `json:"createdAt"`
 	TargetURL    string `json:"targetUrl"`
+	Content      TaskContent `json:"content"`
 }
 
 // DashboardAttention carries raw status values plus a short detail string so the
@@ -378,14 +379,14 @@ func (s *DashboardStore) credits() (DashboardCredits, error) {
 
 func (s *DashboardStore) recentTasks() ([]DashboardRecentTask, error) {
 	rows, err := s.db.Query(`
-		SELECT t.id, t.type, t.title, t.status, t.target_url, t.created_by, t.created_at,
+		SELECT t.id, t.type, t.title, t.status, t.target_url, t.content, t.created_by, t.created_at,
 		       COUNT(i.id) AS account_count,
 		       SUM(CASE WHEN i.status IN ('success','failed','cancelled') THEN 1 ELSE 0 END) AS done_count,
 		       SUM(CASE WHEN i.status = 'success' THEN 1 ELSE 0 END) AS success_count,
 		       SUM(CASE WHEN i.status = 'failed' THEN 1 ELSE 0 END) AS fail_count
 		FROM tasks t
 		LEFT JOIN task_items i ON i.task_id = t.id
-		GROUP BY t.id, t.type, t.title, t.status, t.target_url, t.created_by, t.created_at
+		GROUP BY t.id, t.type, t.title, t.status, t.target_url, t.content, t.created_by, t.created_at
 		ORDER BY t.id DESC
 		LIMIT ?`, dashboardListLimit)
 	if err != nil {
@@ -400,15 +401,17 @@ func (s *DashboardStore) recentTasks() ([]DashboardRecentTask, error) {
 	for rows.Next() {
 		var (
 			item                         DashboardRecentTask
+			contentRaw                   string
 			createdAt                    time.Time
 			accountCount, done, ok, fail sql.NullInt64
 		)
 		if err := rows.Scan(
-			&item.ID, &item.Type, &item.Title, &item.Status, &item.TargetURL, &item.CreatedBy, &createdAt,
+			&item.ID, &item.Type, &item.Title, &item.Status, &item.TargetURL, &contentRaw, &item.CreatedBy, &createdAt,
 			&accountCount, &done, &ok, &fail,
 		); err != nil {
 			return nil, err
 		}
+		item.Content = parseTaskContent(contentRaw)
 		item.CreatedAt = formatDateTime(createdAt)
 		item.AccountCount = int(accountCount.Int64)
 		item.DoneCount = int(done.Int64)

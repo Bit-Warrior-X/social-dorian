@@ -12,26 +12,35 @@ import (
 	"time"
 )
 
+type TaskContent struct {
+	Text     string `json:"text,omitempty"`
+	Headline string `json:"headline,omitempty"`
+	LinkURL  string `json:"linkUrl,omitempty"`
+	MediaURL string `json:"mediaUrl,omitempty"`
+}
+
 type Task struct {
-	ID             int      `json:"id"`
-	Type           string   `json:"type"`
-	Title          string   `json:"title"`
-	TargetURL      string   `json:"targetUrl"`
-	Status         string   `json:"status"`
-	DelayMinSec    int      `json:"delayMinSec"`
-	DelayMaxSec    int      `json:"delayMaxSec"`
-	UseAccountProxy bool    `json:"useAccountProxy"`
-	AccountIDs     []int    `json:"accountIds"`
-	AccountCount   int      `json:"accountCount"`
-	DoneCount      int      `json:"doneCount"`
-	SuccessCount   int      `json:"successCount"`
-	FailCount      int      `json:"failCount"`
-	CreatedBy      string   `json:"createdBy"`
-	CreatedAt      string   `json:"createdAt"`
-	StartedAt      string   `json:"startedAt,omitempty"`
-	FinishedAt     string   `json:"finishedAt,omitempty"`
-	Items          []TaskItem `json:"items,omitempty"`
-	Logs           []TaskLog  `json:"logs,omitempty"`
+	ID              int         `json:"id"`
+	Type            string      `json:"type"`
+	Title           string      `json:"title"`
+	TargetURL       string      `json:"targetUrl"`
+	Content         TaskContent `json:"content"`
+	Status          string      `json:"status"`
+	DelayMinSec     int         `json:"delayMinSec"`
+	DelayMaxSec     int         `json:"delayMaxSec"`
+	UseAccountProxy bool        `json:"useAccountProxy"`
+	ShowBrowser     bool        `json:"showBrowser"`
+	AccountIDs      []int       `json:"accountIds"`
+	AccountCount    int         `json:"accountCount"`
+	DoneCount       int         `json:"doneCount"`
+	SuccessCount    int         `json:"successCount"`
+	FailCount       int         `json:"failCount"`
+	CreatedBy       string      `json:"createdBy"`
+	CreatedAt       string      `json:"createdAt"`
+	StartedAt       string      `json:"startedAt,omitempty"`
+	FinishedAt      string      `json:"finishedAt,omitempty"`
+	Items           []TaskItem  `json:"items,omitempty"`
+	Logs            []TaskLog   `json:"logs,omitempty"`
 }
 
 type TaskItem struct {
@@ -57,13 +66,15 @@ type TaskLog struct {
 }
 
 type TaskInput struct {
-	Type            string `json:"type"`
-	Title           string `json:"title"`
-	TargetURL       string `json:"targetUrl"`
-	AccountIDs      []int  `json:"accountIds"`
-	DelayMinSec     int    `json:"delayMinSec"`
-	DelayMaxSec     int    `json:"delayMaxSec"`
-	UseAccountProxy bool   `json:"useAccountProxy"`
+	Type            string      `json:"type"`
+	Title           string      `json:"title"`
+	TargetURL       string      `json:"targetUrl"`
+	Content         TaskContent `json:"content"`
+	AccountIDs      []int       `json:"accountIds"`
+	DelayMinSec     int         `json:"delayMinSec"`
+	DelayMaxSec     int         `json:"delayMaxSec"`
+	UseAccountProxy bool        `json:"useAccountProxy"`
+	ShowBrowser     bool        `json:"showBrowser"`
 }
 
 type TaskStore struct {
@@ -83,13 +94,15 @@ func (s *TaskStore) ensureSchema() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS tasks (
 			id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-			type ENUM('report','post','browse','login_test') NOT NULL,
+			type ENUM('report','post','browse','login_test','reply') NOT NULL,
 			title VARCHAR(255) NOT NULL DEFAULT '',
 			target_url TEXT NOT NULL,
+			content TEXT NOT NULL,
 			status ENUM('pending','queued','running','completed','failed','cancelled') NOT NULL DEFAULT 'pending',
 			delay_min_sec INT UNSIGNED NOT NULL DEFAULT 5,
 			delay_max_sec INT UNSIGNED NOT NULL DEFAULT 15,
 			use_account_proxy TINYINT(1) NOT NULL DEFAULT 1,
+			show_browser TINYINT(1) NOT NULL DEFAULT 0,
 			created_by VARCHAR(120) NOT NULL DEFAULT '',
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			started_at DATETIME NULL,
@@ -136,7 +149,120 @@ func (s *TaskStore) ensureSchema() error {
 			return err
 		}
 	}
-	_, err := s.db.Exec(`INSERT IGNORE INTO workspace_credits (id, balance) VALUES (1, 1000)`)
+	if err := s.ensureTasksContentColumn(); err != nil {
+		return err
+	}
+	if err := s.ensureTasksReplyType(); err != nil {
+		return err
+	}
+	if err := s.ensureTasksShowBrowserColumn(); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`INSERT IGNORE INTO workspace_credits (id, balance) VALUES (1, 1000)`); err != nil {
+		return err
+	}
+	s.recoverStuckTasks()
+	return nil
+}
+
+// recoverStuckTasks finalizes tasks left "running" after an API restart
+// (in-memory workers are gone, so those rows would otherwise hang forever).
+func (s *TaskStore) recoverStuckTasks() {
+	res, err := s.db.Exec(`
+		UPDATE task_items
+		SET status = 'failed',
+		    message = 'Worker interrupted (API restart)',
+		    finished_at = UTC_TIMESTAMP()
+		WHERE status IN ('pending', 'running')
+		  AND task_id IN (
+		    SELECT id FROM (
+		      SELECT id FROM tasks WHERE status IN ('queued', 'running')
+		    ) t
+		  )`)
+	if err != nil {
+		log.Printf("recoverStuckTasks items: %v", err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("recoverStuckTasks: marked %d orphaned item(s) failed", n)
+	}
+
+	res, err = s.db.Exec(`
+		UPDATE tasks t
+		SET status = CASE
+			WHEN (
+				SELECT COUNT(*) FROM task_items i
+				WHERE i.task_id = t.id AND i.status = 'failed'
+			) > 0
+			AND (
+				SELECT COUNT(*) FROM task_items i
+				WHERE i.task_id = t.id AND i.status = 'success'
+			) = 0
+			THEN 'failed'
+			ELSE 'completed'
+		END,
+		finished_at = UTC_TIMESTAMP()
+		WHERE t.status IN ('queued', 'running')
+		  AND NOT EXISTS (
+			SELECT 1 FROM task_items i
+			WHERE i.task_id = t.id AND i.status IN ('pending', 'running')
+		  )`)
+	if err != nil {
+		log.Printf("recoverStuckTasks tasks: %v", err)
+		return
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("recoverStuckTasks: finalized %d stuck task(s)", n)
+	}
+}
+
+func (s *TaskStore) ensureTasksShowBrowserColumn() error {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'tasks'
+		  AND COLUMN_NAME = 'show_browser'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE tasks ADD COLUMN show_browser TINYINT(1) NOT NULL DEFAULT 0`)
+	return err
+}
+
+func (s *TaskStore) ensureTasksReplyType() error {
+	_, err := s.db.Exec(`
+		ALTER TABLE tasks
+		MODIFY COLUMN type ENUM('report','post','browse','login_test','reply') NOT NULL`)
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+		// Ignore if already applied or table missing during first boot before create
+		if strings.Contains(strings.ToLower(err.Error()), "doesn't exist") {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *TaskStore) ensureTasksContentColumn() error {
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'tasks'
+		  AND COLUMN_NAME = 'content'`).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err = s.db.Exec(`ALTER TABLE tasks ADD COLUMN content TEXT NOT NULL DEFAULT ''`)
 	return err
 }
 
@@ -238,9 +364,76 @@ func (s *TaskStore) handleCredits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"balance":   balance,
-		"updatedAt": formatDateTime(updatedAt),
+		"balance":          balance,
+		"updatedAt":        formatDateTime(updatedAt),
+		"costPerAccount":   creditCostPerAccount,
+		"debitOnLaunch":    true,
 	})
+}
+
+type MonitorLog struct {
+	ID          int    `json:"id"`
+	TaskID      int    `json:"taskId"`
+	TaskType    string `json:"taskType"`
+	TaskTitle   string `json:"taskTitle"`
+	AccountID   int    `json:"accountId,omitempty"`
+	Level       string `json:"level"`
+	Message     string `json:"message"`
+	CreatedAt   string `json:"createdAt"`
+}
+
+func (s *TaskStore) handleMonitorFeed(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	afterID, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("after")))
+	limit, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("limit")))
+	if limit <= 0 || limit > 200 {
+		limit = 80
+	}
+
+	query := `
+		SELECT l.id, l.task_id, COALESCE(t.type, ''), COALESCE(t.title, ''),
+		       COALESCE(l.account_id, 0), l.level, l.message, l.created_at
+		FROM task_logs l
+		LEFT JOIN tasks t ON t.id = l.task_id`
+	args := []any{}
+	if afterID > 0 {
+		query += ` WHERE l.id > ?`
+		args = append(args, afterID)
+	}
+	query += ` ORDER BY l.id DESC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to load feed")
+		return
+	}
+	defer rows.Close()
+
+	out := make([]MonitorLog, 0)
+	for rows.Next() {
+		var (
+			entry     MonitorLog
+			createdAt time.Time
+		)
+		if err := rows.Scan(
+			&entry.ID, &entry.TaskID, &entry.TaskType, &entry.TaskTitle,
+			&entry.AccountID, &entry.Level, &entry.Message, &createdAt,
+		); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load feed")
+			return
+		}
+		entry.CreatedAt = formatDateTime(createdAt)
+		out = append(out, entry)
+	}
+	// Return chronological for the UI stream
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"logs": out})
 }
 
 func (s *TaskStore) handleBusyAccounts(w http.ResponseWriter, r *http.Request) {
@@ -278,21 +471,46 @@ func decodeTaskInput(w http.ResponseWriter, r *http.Request) (TaskInput, bool) {
 	input.Type = strings.ToLower(strings.TrimSpace(input.Type))
 	input.Title = strings.TrimSpace(input.Title)
 	input.TargetURL = strings.TrimSpace(input.TargetURL)
+	input.Content.Text = strings.TrimSpace(input.Content.Text)
+	input.Content.Headline = strings.TrimSpace(input.Content.Headline)
+	input.Content.LinkURL = strings.TrimSpace(input.Content.LinkURL)
+	input.Content.MediaURL = strings.TrimSpace(input.Content.MediaURL)
 	switch input.Type {
-	case "report", "post", "browse", "login_test":
+	case "report", "post", "browse", "login_test", "reply":
 	default:
-		writeError(w, http.StatusBadRequest, "type must be report, post, browse, or login_test")
+		writeError(w, http.StatusBadRequest, "type must be report, post, browse, login_test, or reply")
 		return TaskInput{}, false
 	}
 	if len(input.AccountIDs) == 0 {
 		writeError(w, http.StatusBadRequest, "select at least one account")
 		return TaskInput{}, false
 	}
-	if input.Type == "report" || input.Type == "post" {
+	switch input.Type {
+	case "report":
 		if input.TargetURL == "" {
 			writeError(w, http.StatusBadRequest, "target URL is required")
 			return TaskInput{}, false
 		}
+		input.Content = TaskContent{}
+	case "reply":
+		if input.TargetURL == "" {
+			writeError(w, http.StatusBadRequest, "target URL is required")
+			return TaskInput{}, false
+		}
+		if input.Content.Text == "" {
+			writeError(w, http.StatusBadRequest, "reply text is required")
+			return TaskInput{}, false
+		}
+		input.Content = TaskContent{Text: input.Content.Text}
+	case "post":
+		if input.Content.Text == "" {
+			writeError(w, http.StatusBadRequest, "post text is required")
+			return TaskInput{}, false
+		}
+		input.TargetURL = ""
+	default:
+		input.TargetURL = ""
+		input.Content = TaskContent{}
 	}
 	if input.DelayMinSec <= 0 {
 		input.DelayMinSec = 5
@@ -313,6 +531,8 @@ func defaultTaskTitle(taskType string) string {
 	switch taskType {
 	case "report":
 		return "Report post"
+	case "reply":
+		return "Reply to post"
 	case "post":
 		return "Publish post"
 	case "browse":
@@ -331,6 +551,15 @@ func (s *TaskStore) create(input TaskInput, createdBy string) (Task, error) {
 	}
 	defer tx.Rollback()
 
+	needed := s.creditsNeeded(len(input.AccountIDs))
+	var balance int
+	if err := tx.QueryRow(`SELECT balance FROM workspace_credits WHERE id = 1 FOR UPDATE`).Scan(&balance); err != nil {
+		return Task{}, fmt.Errorf("credits unavailable: %w", err)
+	}
+	if balance < needed {
+		return Task{}, fmt.Errorf("insufficient credits: need %d, have %d", needed, balance)
+	}
+
 	for _, accountID := range input.AccountIDs {
 		var exists int
 		if err := tx.QueryRow(`SELECT 1 FROM accounts WHERE id = ?`, accountID).Scan(&exists); err != nil {
@@ -341,10 +570,15 @@ func (s *TaskStore) create(input TaskInput, createdBy string) (Task, error) {
 		}
 	}
 
+	contentJSON, err := json.Marshal(input.Content)
+	if err != nil {
+		return Task{}, err
+	}
+
 	res, err := tx.Exec(`
-		INSERT INTO tasks (type, title, target_url, status, delay_min_sec, delay_max_sec, use_account_proxy, created_by)
-		VALUES (?, ?, ?, 'queued', ?, ?, ?, ?)`,
-		input.Type, input.Title, input.TargetURL, input.DelayMinSec, input.DelayMaxSec, boolToInt(input.UseAccountProxy), createdBy,
+		INSERT INTO tasks (type, title, target_url, content, status, delay_min_sec, delay_max_sec, use_account_proxy, show_browser, created_by)
+		VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`,
+		input.Type, input.Title, input.TargetURL, string(contentJSON), input.DelayMinSec, input.DelayMaxSec, boolToInt(input.UseAccountProxy), boolToInt(input.ShowBrowser), createdBy,
 	)
 	if err != nil {
 		return Task{}, err
@@ -369,6 +603,17 @@ func (s *TaskStore) create(input TaskInput, createdBy string) (Task, error) {
 		return Task{}, err
 	}
 
+	if needed > 0 {
+		if _, err := tx.Exec(`UPDATE workspace_credits SET balance = balance - ? WHERE id = 1`, needed); err != nil {
+			return Task{}, err
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO task_logs (task_id, level, message)
+			VALUES (?, 'info', ?)`, taskID, fmt.Sprintf("Debited %d credit(s)", needed)); err != nil {
+			return Task{}, err
+		}
+	}
+
 	if err := tx.Commit(); err != nil {
 		return Task{}, err
 	}
@@ -381,8 +626,8 @@ func (s *TaskStore) create(input TaskInput, createdBy string) (Task, error) {
 
 func (s *TaskStore) list(status string) ([]Task, error) {
 	query := `
-		SELECT t.id, t.type, t.title, t.target_url, t.status, t.delay_min_sec, t.delay_max_sec,
-		       t.use_account_proxy, t.created_by, t.created_at, t.started_at, t.finished_at,
+		SELECT t.id, t.type, t.title, t.target_url, t.content, t.status, t.delay_min_sec, t.delay_max_sec,
+		       t.use_account_proxy, t.show_browser, t.created_by, t.created_at, t.started_at, t.finished_at,
 		       COUNT(i.id) AS account_count,
 		       SUM(CASE WHEN i.status IN ('success','failed','cancelled') THEN 1 ELSE 0 END) AS done_count,
 		       SUM(CASE WHEN i.status = 'success' THEN 1 ELSE 0 END) AS success_count,
@@ -395,8 +640,8 @@ func (s *TaskStore) list(status string) ([]Task, error) {
 		args = append(args, status)
 	}
 	query += `
-		GROUP BY t.id, t.type, t.title, t.target_url, t.status, t.delay_min_sec, t.delay_max_sec,
-		         t.use_account_proxy, t.created_by, t.created_at, t.started_at, t.finished_at
+		GROUP BY t.id, t.type, t.title, t.target_url, t.content, t.status, t.delay_min_sec, t.delay_max_sec,
+		         t.use_account_proxy, t.show_browser, t.created_by, t.created_at, t.started_at, t.finished_at
 		ORDER BY t.id DESC
 		LIMIT 200`
 
@@ -419,8 +664,8 @@ func (s *TaskStore) list(status string) ([]Task, error) {
 
 func (s *TaskStore) get(id int, withDetails bool) (Task, bool, error) {
 	row := s.db.QueryRow(`
-		SELECT t.id, t.type, t.title, t.target_url, t.status, t.delay_min_sec, t.delay_max_sec,
-		       t.use_account_proxy, t.created_by, t.created_at, t.started_at, t.finished_at,
+		SELECT t.id, t.type, t.title, t.target_url, t.content, t.status, t.delay_min_sec, t.delay_max_sec,
+		       t.use_account_proxy, t.show_browser, t.created_by, t.created_at, t.started_at, t.finished_at,
 		       COUNT(i.id) AS account_count,
 		       SUM(CASE WHEN i.status IN ('success','failed','cancelled') THEN 1 ELSE 0 END) AS done_count,
 		       SUM(CASE WHEN i.status = 'success' THEN 1 ELSE 0 END) AS success_count,
@@ -428,8 +673,8 @@ func (s *TaskStore) get(id int, withDetails bool) (Task, bool, error) {
 		FROM tasks t
 		LEFT JOIN task_items i ON i.task_id = t.id
 		WHERE t.id = ?
-		GROUP BY t.id, t.type, t.title, t.target_url, t.status, t.delay_min_sec, t.delay_max_sec,
-		         t.use_account_proxy, t.created_by, t.created_at, t.started_at, t.finished_at`, id)
+		GROUP BY t.id, t.type, t.title, t.target_url, t.content, t.status, t.delay_min_sec, t.delay_max_sec,
+		         t.use_account_proxy, t.show_browser, t.created_by, t.created_at, t.started_at, t.finished_at`, id)
 	task, err := scanTaskSummary(row)
 	if err == sql.ErrNoRows {
 		return Task{}, false, nil
@@ -589,6 +834,14 @@ func (s *TaskStore) runTask(taskID int) {
 
 	_, _ = s.db.Exec(`UPDATE tasks SET status = 'running', started_at = UTC_TIMESTAMP() WHERE id = ?`, taskID)
 	s.addLog(taskID, 0, "info", "Worker started")
+	if task.UseAccountProxy {
+		s.addLog(taskID, 0, "info", "Using each account’s assigned proxy")
+	} else {
+		s.addLog(taskID, 0, "info", "Running without account proxies")
+	}
+	if task.ShowBrowser {
+		s.addLog(taskID, 0, "info", "Show browser window enabled — live view links will appear per account")
+	}
 
 	for _, item := range task.Items {
 		fresh, _, err := s.get(taskID, false)
@@ -616,38 +869,29 @@ func (s *TaskStore) runTask(taskID int) {
 			return
 		}
 
-		msg := simulateTaskResult(task.Type, item.AccountName, task.TargetURL)
-		_, _ = s.db.Exec(`
-			UPDATE task_items SET status = 'success', message = ?, finished_at = UTC_TIMESTAMP()
-			WHERE id = ?`, msg, item.ID)
-		s.addLog(taskID, item.AccountID, "success", msg)
+		result := s.executeItem(task, item)
+		if result.OK {
+			_, _ = s.db.Exec(`
+				UPDATE task_items SET status = 'success', message = ?, finished_at = UTC_TIMESTAMP()
+				WHERE id = ?`, result.Message, item.ID)
+			s.addLog(taskID, item.AccountID, "success", result.Message)
+		} else {
+			_, _ = s.db.Exec(`
+				UPDATE task_items SET status = 'failed', message = ?, finished_at = UTC_TIMESTAMP()
+				WHERE id = ?`, result.Message, item.ID)
+			s.addLog(taskID, item.AccountID, "error", result.Message)
+		}
 	}
 
 	task, _, _ = s.get(taskID, false)
 	finalStatus := "completed"
 	if task.FailCount > 0 && task.SuccessCount == 0 {
 		finalStatus = "failed"
+	} else if task.FailCount > 0 {
+		finalStatus = "completed"
 	}
 	_, _ = s.db.Exec(`UPDATE tasks SET status = ?, finished_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'running'`, finalStatus, taskID)
-	s.addLog(taskID, 0, "info", fmt.Sprintf("Task %s: %d/%d success", finalStatus, task.SuccessCount, task.AccountCount))
-}
-
-func simulateTaskResult(taskType, accountName, targetURL string) string {
-	switch taskType {
-	case "report":
-		if targetURL == "" {
-			return fmt.Sprintf("%s reported target", accountName)
-		}
-		return fmt.Sprintf("%s reported %s", accountName, targetURL)
-	case "post":
-		return fmt.Sprintf("%s prepared post for %s", accountName, targetURL)
-	case "browse":
-		return fmt.Sprintf("%s browsed feed (scroll + idle)", accountName)
-	case "login_test":
-		return fmt.Sprintf("%s login check queued against saved profile", accountName)
-	default:
-		return fmt.Sprintf("%s finished", accountName)
-	}
+	s.addLog(taskID, 0, "info", fmt.Sprintf("Task %s: %d/%d success, %d failed", finalStatus, task.SuccessCount, task.AccountCount, task.FailCount))
 }
 
 func (s *TaskStore) addLog(taskID, accountID int, level, message string) {
@@ -665,21 +909,24 @@ type taskScanner interface {
 func scanTaskSummary(row taskScanner) (Task, error) {
 	var (
 		task                         Task
-		useProxy                     int
+		contentRaw                   string
+		useProxy, showBrowser        int
 		createdAt                    time.Time
 		startedAt, finishedAt        sql.NullTime
 		accountCount, done, ok, fail sql.NullInt64
 	)
 	err := row.Scan(
-		&task.ID, &task.Type, &task.Title, &task.TargetURL, &task.Status,
-		&task.DelayMinSec, &task.DelayMaxSec, &useProxy, &task.CreatedBy,
+		&task.ID, &task.Type, &task.Title, &task.TargetURL, &contentRaw, &task.Status,
+		&task.DelayMinSec, &task.DelayMaxSec, &useProxy, &showBrowser, &task.CreatedBy,
 		&createdAt, &startedAt, &finishedAt,
 		&accountCount, &done, &ok, &fail,
 	)
 	if err != nil {
 		return Task{}, err
 	}
+	task.Content = parseTaskContent(contentRaw)
 	task.UseAccountProxy = useProxy == 1
+	task.ShowBrowser = showBrowser == 1
 	task.CreatedAt = formatDateTime(createdAt)
 	if startedAt.Valid {
 		task.StartedAt = formatDateTime(startedAt.Time)
@@ -693,6 +940,18 @@ func scanTaskSummary(row taskScanner) (Task, error) {
 	task.FailCount = int(fail.Int64)
 	task.AccountIDs = []int{}
 	return task, nil
+}
+
+func parseTaskContent(raw string) TaskContent {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "{}" {
+		return TaskContent{}
+	}
+	var content TaskContent
+	if err := json.Unmarshal([]byte(raw), &content); err != nil {
+		return TaskContent{}
+	}
+	return content
 }
 
 func parseTaskPath(w http.ResponseWriter, path string) (int, string, bool) {

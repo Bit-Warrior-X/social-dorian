@@ -1,5 +1,5 @@
 <template>
-  <div v-if="open" class="overlay" @click.self="emit('close')">
+  <div v-if="open" class="overlay">
     <div
       class="modal"
       :class="{
@@ -74,6 +74,8 @@ const emit = defineEmits(['close'])
 
 .modal--wide {
   width: 820px;
+  max-height: min(880px, calc(100vh - 2.5rem));
+  overflow: hidden;
 }
 
 .modal--full {
@@ -90,6 +92,7 @@ const emit = defineEmits(['close'])
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 1rem;
+  flex-shrink: 0;
 }
 
 .modal--full .modal__head {
@@ -111,6 +114,7 @@ const emit = defineEmits(['close'])
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: auto;
 }
 
 .modal--full .modal__body {

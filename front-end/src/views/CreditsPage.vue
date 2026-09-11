@@ -16,7 +16,8 @@
         Updated {{ updatedAt ? formatWhen(updatedAt) : '—' }}
       </p>
       <p class="panel__note">
-        Task workers are live in queue mode. Browser automation for report/post will debit credits when connected.
+        Launching a task debits {{ costPerAccount }} credit per selected account up front.
+        Workers run Facebook automation for report, reply, post, browse, and login test.
       </p>
     </div>
   </div>
@@ -30,6 +31,7 @@ import { useNotify } from '../composables/useNotify'
 const { notifyError } = useNotify()
 const balance = ref(0)
 const updatedAt = ref('')
+const costPerAccount = ref(1)
 const loading = ref(true)
 const error = ref('')
 
@@ -44,6 +46,7 @@ onMounted(async () => {
     const data = await getCredits()
     balance.value = Number(data.balance || 0)
     updatedAt.value = data.updatedAt || ''
+    costPerAccount.value = Number(data.costPerAccount || 1)
   } catch (err) {
     error.value = err.message || 'Could not load credits'
     notifyError(error.value)

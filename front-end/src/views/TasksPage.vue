@@ -64,11 +64,12 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="task in filteredTasks" :key="task.id">
+              <tr v-for="task in pageItems" :key="task.id">
                 <td>
                   <div class="task-cell">
                     <strong>#{{ task.id }} {{ task.title }}</strong>
                     <span v-if="task.targetUrl" class="sub mono">{{ task.targetUrl }}</span>
+                    <span v-else-if="taskContentPreview(task)" class="sub">{{ taskContentPreview(task) }}</span>
                   </div>
                 </td>
                 <td>
@@ -104,6 +105,16 @@
                   </div>
                 </td>
                 <td class="actions">
+                  <button
+                    v-if="task.showBrowser && (task.status === 'running' || task.status === 'queued')"
+                    class="btn btn-icon"
+                    type="button"
+                    aria-label="Open browser window"
+                    title="Open browser window"
+                    @click="openTaskWatch(task)"
+                  >
+                    <i class="ti ti-brand-chrome" aria-hidden="true" />
+                  </button>
                   <button class="btn btn-icon" type="button" aria-label="View logs" @click="openDetail(task)">
                     <i class="ti ti-list-details" aria-hidden="true" />
                   </button>
@@ -122,6 +133,15 @@
           </table>
         </div>
         <p v-if="filteredTasks.length === 0" class="empty">No tasks match your filters.</p>
+        <PaginationBar
+          v-model:page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          :total-pages="totalPages"
+          :from="from"
+          :to="to"
+          :page-size-options="pageSizeOptions"
+        />
       </template>
     </div>
 
@@ -150,15 +170,37 @@
           <span>{{ detail.doneCount }}/{{ detail.accountCount }} done</span>
         </div>
         <p v-if="detail.targetUrl" class="detail__url mono">{{ detail.targetUrl }}</p>
+        <div v-else-if="detail.content?.text || detail.content?.headline" class="detail__content">
+          <strong v-if="detail.content.headline">{{ detail.content.headline }}</strong>
+          <p v-if="detail.content.text">{{ detail.content.text }}</p>
+          <p v-if="detail.content.linkUrl" class="mono">{{ detail.content.linkUrl }}</p>
+          <p v-if="detail.content.mediaUrl" class="mono">{{ detail.content.mediaUrl }}</p>
+        </div>
         <div class="log-stream">
           <div v-for="entry in detail.logs || []" :key="entry.id" class="log" :class="'log--' + entry.level">
             <span class="log__time">{{ formatTime(entry.createdAt) }}</span>
-            <span>{{ entry.message }}</span>
+            <span>
+              <template v-if="liveViewHref(entry.message)">
+                Watch live:
+                <button class="live-link" type="button" @click="openWatchFromHref(liveViewHref(entry.message), detail)">
+                  Open browser window
+                </button>
+              </template>
+              <template v-else>{{ entry.message }}</template>
+            </span>
           </div>
           <p v-if="!(detail.logs || []).length" class="empty">No logs yet.</p>
         </div>
       </div>
     </ModalDialog>
+
+    <TaskWatchModal
+      :open="watchOpen"
+      :title="watchTitle"
+      :frame-url="watchUrl"
+      :waiting="watchWaiting"
+      @close="closeWatch"
+    />
   </div>
 </template>
 
@@ -167,10 +209,20 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ModalDialog from '../components/ModalDialog.vue'
 import NewTaskModal from '../components/NewTaskModal.vue'
+import PaginationBar from '../components/PaginationBar.vue'
+import TaskWatchModal from '../components/TaskWatchModal.vue'
 import { listAccounts } from '../api/accounts'
 import { cancelTask, createTask, getTask, listTasks } from '../api/tasks'
 import { useNotify } from '../composables/useNotify'
-import { TASK_STATUSES, TASK_TYPES, taskProgress, taskStatusLabel, taskTypeMeta } from '../constants/tasks'
+import { usePagination } from '../composables/usePagination'
+import {
+  clearPendingWatchTask,
+  findTaskWatchUrl,
+  liveViewHref,
+  peekPendingWatchTaskId,
+  requestTaskWatch,
+} from '../composables/useTaskWatch'
+import { TASK_STATUSES, TASK_TYPES, taskContentPreview, taskProgress, taskStatusLabel, taskTypeMeta } from '../constants/tasks'
 
 const props = defineProps({
   mode: { type: String, default: 'all' }, // all | active | history
@@ -192,6 +244,11 @@ const taskModalAccountIds = ref([])
 const taskSaving = ref(false)
 const taskError = ref('')
 const detail = ref(null)
+const watchOpen = ref(false)
+const watchUrl = ref('')
+const watchTitle = ref('Live browser')
+const watchWaiting = ref(false)
+const watchTaskId = ref(0)
 let pollTimer = 0
 
 const title = computed(() => {
@@ -203,7 +260,7 @@ const title = computed(() => {
 const description = computed(() => {
   if (props.mode === 'active') return 'Queued and running jobs across your accounts'
   if (props.mode === 'history') return 'Completed, failed, and cancelled jobs'
-  return 'Create report, post, browse, and login-test jobs'
+  return 'Create report, reply, post, browse, and login-test jobs'
 })
 
 const filteredTasks = computed(() => {
@@ -215,6 +272,20 @@ const filteredTasks = computed(() => {
     return true
   })
 })
+
+const {
+  page,
+  pageSize,
+  pageItems,
+  total,
+  totalPages,
+  from,
+  to,
+  pageSizeOptions,
+  reset: resetPage,
+} = usePagination(filteredTasks)
+
+watch([typeFilter, statusFilter, () => props.mode], resetPage)
 
 function countByStatus(status) {
   return tasks.value.filter((task) => task.status === status).length
@@ -234,6 +305,95 @@ function formatTime(value) {
   return date.toLocaleTimeString()
 }
 
+function openWatchModal({ taskId = 0, title = 'Live browser', url = '', waiting = false } = {}) {
+  watchTaskId.value = Number(taskId) || 0
+  watchTitle.value = title
+  watchUrl.value = url || ''
+  watchWaiting.value = Boolean(waiting) && !url
+  watchOpen.value = true
+}
+
+function closeWatch() {
+  if (watchTaskId.value) clearPendingWatchTask(watchTaskId.value)
+  watchOpen.value = false
+  watchWaiting.value = false
+  watchUrl.value = ''
+  watchTaskId.value = 0
+}
+
+function openWatchFromHref(href, task = null) {
+  if (!href) return
+  openWatchModal({
+    taskId: task?.id || 0,
+    title: task ? `Task #${task.id} · Live browser` : 'Live browser',
+    url: href,
+    waiting: false,
+  })
+}
+
+async function openTaskWatch(task) {
+  openWatchModal({
+    taskId: task.id,
+    title: `Task #${task.id} · Live browser`,
+    url: '',
+    waiting: true,
+  })
+  try {
+    const full = await getTask(task.id)
+    const url = findTaskWatchUrl(full)
+    if (url) {
+      watchUrl.value = url
+      watchWaiting.value = false
+      clearPendingWatchTask(task.id)
+      return
+    }
+    requestTaskWatch(task.id)
+    notifySuccess('Live view is starting — hang on a moment')
+  } catch (err) {
+    watchWaiting.value = false
+    notifyError(err.message || 'Could not open live browser')
+  }
+}
+
+async function syncPendingWatch() {
+  const pendingId = watchOpen.value && watchWaiting.value && watchTaskId.value
+    ? watchTaskId.value
+    : peekPendingWatchTaskId()
+  if (!pendingId) return
+
+  try {
+    const task = await getTask(pendingId)
+    const url = findTaskWatchUrl(task)
+    if (!url) {
+      if (['completed', 'failed', 'cancelled'].includes(task.status)) {
+        clearPendingWatchTask(pendingId)
+        if (watchOpen.value && watchTaskId.value === pendingId && !watchUrl.value) {
+          watchWaiting.value = false
+          notifyError(`Task #${pendingId} finished before the live view was ready`)
+        }
+      } else if (!watchOpen.value) {
+        openWatchModal({
+          taskId: pendingId,
+          title: `Task #${pendingId} · Live browser`,
+          url: '',
+          waiting: true,
+        })
+      }
+      return
+    }
+
+    openWatchModal({
+      taskId: pendingId,
+      title: `Task #${pendingId} · Live browser`,
+      url,
+      waiting: false,
+    })
+    clearPendingWatchTask(pendingId)
+  } catch (_) {
+    // Keep waiting; next poll retries.
+  }
+}
+
 async function load() {
   loading.value = true
   loadError.value = ''
@@ -244,6 +404,7 @@ async function load() {
     ])
     tasks.value = taskRows
     accounts.value = accountRows
+    await syncPendingWatch()
   } catch (err) {
     loadError.value = err.message || 'Could not load tasks'
     notifyError(loadError.value)
@@ -258,6 +419,7 @@ async function refreshQuiet() {
     if (detail.value?.id) {
       detail.value = await getTask(detail.value.id)
     }
+    await syncPendingWatch()
   } catch (_) {
     // Keep the last known list if a poll fails.
   }
@@ -277,6 +439,15 @@ async function launchTask(payload) {
     const task = await createTask(payload)
     taskModalOpen.value = false
     notifySuccess(`Launched ${taskTypeMeta(task.type).label} #${task.id}`)
+    if (payload.showBrowser) {
+      requestTaskWatch(task.id)
+      openWatchModal({
+        taskId: task.id,
+        title: `Task #${task.id} · Live browser`,
+        url: '',
+        waiting: true,
+      })
+    }
     await router.push('/tasks/active')
     await load()
   } catch (err) {
@@ -533,6 +704,30 @@ th {
   word-break: break-all;
 }
 
+.detail__content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 0.5px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.detail__content strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.detail__content p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
 .log-stream {
   max-height: 360px;
   overflow: auto;
@@ -555,6 +750,20 @@ th {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--text-faint);
+}
+.live-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--viper-400);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.live-link:hover {
+  text-decoration: underline;
 }
 .log--success { color: var(--success); }
 .log--warn { color: var(--warn); }
