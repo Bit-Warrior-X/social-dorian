@@ -895,11 +895,22 @@ func (s *TaskStore) runTask(taskID int) {
 }
 
 func (s *TaskStore) addLog(taskID, accountID int, level, message string) {
-	if accountID > 0 {
-		_, _ = s.db.Exec(`INSERT INTO task_logs (task_id, account_id, level, message) VALUES (?, ?, ?, ?)`, taskID, accountID, level, message)
+	msg := strings.TrimSpace(message)
+	if msg == "" {
 		return
 	}
-	_, _ = s.db.Exec(`INSERT INTO task_logs (task_id, level, message) VALUES (?, ?, ?)`, taskID, level, message)
+	if accountID > 0 {
+		_, _ = s.db.Exec(`INSERT INTO task_logs (task_id, account_id, level, message) VALUES (?, ?, ?, ?)`, taskID, accountID, level, msg)
+	} else {
+		_, _ = s.db.Exec(`INSERT INTO task_logs (task_id, level, message) VALUES (?, ?, ?)`, taskID, level, msg)
+	}
+	emitActivity(ActivityInput{
+		Source:    "task",
+		Level:     level,
+		Message:   msg,
+		TaskID:    taskID,
+		AccountID: accountID,
+	})
 }
 
 type taskScanner interface {

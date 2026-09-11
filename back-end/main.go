@@ -44,6 +44,18 @@ func main() {
 		log.Fatalf("failed to prepare task tables: %v", err)
 	}
 
+	activityStore := newActivityStore(db)
+	if err := activityStore.ensureSchema(); err != nil {
+		log.Fatalf("failed to prepare activity log tables: %v", err)
+	}
+	setActivityBus(activityStore)
+	activityStore.backfillFromTaskLogs()
+	emitActivity(ActivityInput{
+		Source:  "system",
+		Level:   "info",
+		Message: "API started — activity log online",
+	})
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", handleHealth)
 	mux.HandleFunc("/api/auth/", authStore.handleAuth)
@@ -61,7 +73,7 @@ func main() {
 	mux.HandleFunc("/api/tasks/", taskStore.handleTaskByID)
 	mux.HandleFunc("/api/credits", taskStore.handleCredits)
 	mux.HandleFunc("/api/busy-accounts", taskStore.handleBusyAccounts)
-	mux.HandleFunc("/api/monitor/feed", taskStore.handleMonitorFeed)
+	mux.HandleFunc("/api/monitor/feed", activityStore.handleFeed)
 	mux.HandleFunc("/api/uploads", handleUploads)
 	mux.HandleFunc("/api/uploads/", handleUploads)
 	mux.HandleFunc("/api/users", authStore.handleUsers)

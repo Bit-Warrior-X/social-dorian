@@ -42,19 +42,20 @@ var platformURLs = map[string]string{
 }
 
 type AccountOpenResult struct {
-	SessionURL    string           `json:"sessionUrl"`
-	URL           string           `json:"url"`
-	ExitIP        string           `json:"exitIp"`
-	Proxy         AccountOpenProxy `json:"proxy"`
-	Platform      string           `json:"platform"`
-	AccountName   string           `json:"accountName"`
-	Email         string           `json:"email"`
-	Password      string           `json:"password"`
-	Mode          string           `json:"mode"`
-	ProfileDir    string           `json:"profileDir"`
-	Reused        bool             `json:"reused"`
-	LoginStatus   string           `json:"loginStatus"`
-	LoginMessage  string           `json:"loginMessage"`
+	SessionURL   string            `json:"sessionUrl"`
+	URL          string            `json:"url"`
+	ExitIP       string            `json:"exitIp"`
+	Proxy        AccountOpenProxy  `json:"proxy"`
+	Platform     string            `json:"platform"`
+	AccountName  string            `json:"accountName"`
+	Email        string            `json:"email"`
+	Password     string            `json:"password"`
+	Mode         string            `json:"mode"`
+	ProfileDir   string            `json:"profileDir"`
+	Reused       bool              `json:"reused"`
+	LoginStatus  string            `json:"loginStatus"`
+	LoginMessage string            `json:"loginMessage"`
+	Logs         []SessionLogEntry `json:"logs"`
 }
 
 type AccountOpenProxy struct {
@@ -64,6 +65,13 @@ type AccountOpenProxy struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Country  string `json:"country"`
+}
+
+type SessionLogEntry struct {
+	ID      int    `json:"id"`
+	Level   string `json:"level"`
+	Message string `json:"message"`
+	At      string `json:"at"`
 }
 
 type browseSession struct {
@@ -83,6 +91,8 @@ type browseSession struct {
 	DebugPort    int
 	LoginStatus  string
 	LoginMessage string
+	Logs         []SessionLogEntry
+	nextLogID    int
 	loginMu      sync.Mutex
 }
 
@@ -114,6 +124,7 @@ func (s *AccountStore) open(id int) (AccountOpenResult, error) {
 	}
 
 	if existing := findBrowseSessionByAccount(account.ID); existing != nil {
+		existing.appendLog("info", "Reattached to existing remote session")
 		s.ensureLogin(existing)
 		return openResultFromSession(existing, true), nil
 	}
@@ -127,6 +138,13 @@ func (s *AccountStore) open(id int) (AccountOpenResult, error) {
 	}
 
 	if err := probeProxy(proxy); err != nil {
+		emitActivity(ActivityInput{
+			Source:    "account",
+			Level:     "error",
+			Message:   fmt.Sprintf("Open blocked — proxy %s unreachable: %v", proxy.Name, err),
+			AccountID: account.ID,
+			ProxyID:   proxy.ID,
+		})
 		return AccountOpenResult{}, fmt.Errorf("proxy %s is not reachable: %w", proxy.Name, err)
 	}
 
@@ -149,11 +167,17 @@ func (s *AccountStore) open(id int) (AccountOpenResult, error) {
 		ExitIP:    exitIP,
 		CreatedAt: time.Now().UTC(),
 	}
+	session.appendLog("info", fmt.Sprintf("Opening %s via proxy %s", account.Platform, proxy.Name))
+	if exitIP != "" {
+		session.appendLog("info", "Exit IP: "+exitIP)
+	}
 
 	if err := startRemoteChromium(session); err != nil {
+		session.appendLog("error", err.Error())
 		stopBrowseSession(session)
 		return AccountOpenResult{}, err
 	}
+	session.appendLog("success", "Remote Chromium is ready")
 
 	putBrowseSession(session)
 	s.ensureLogin(session)
@@ -165,7 +189,7 @@ func openResultFromSession(session *browseSession, reused bool) AccountOpenResul
 	viewer := sessionPathPrefix + session.Token + "/vnc/vnc_lite.html" +
 		"?autoconnect=1&reconnect=1&reconnect_delay=2000&scale=true&path=" + url.QueryEscape(wsPath)
 
-	loginStatus, loginMessage := session.loginSnapshot()
+	loginStatus, loginMessage, logs := session.loginSnapshot()
 	return AccountOpenResult{
 		SessionURL:   viewer,
 		URL:          session.StartURL,
@@ -179,6 +203,7 @@ func openResultFromSession(session *browseSession, reused bool) AccountOpenResul
 		Reused:       reused,
 		LoginStatus:  loginStatus,
 		LoginMessage: loginMessage,
+		Logs:         logs,
 		Proxy: AccountOpenProxy{
 			ID:       session.Proxy.ID,
 			Name:     session.Proxy.Name,
@@ -284,6 +309,7 @@ func startRemoteChromium(session *browseSession) error {
 		return fmt.Errorf("prepare browser profile: %w", err)
 	}
 
+	session.appendLog("info", "Starting virtual display…")
 	xvfb := exec.Command("Xvfb", fmt.Sprintf(":%d", display), "-screen", "0", "1280x800x24", "-ac", "-nolisten", "tcp")
 	xvfb.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := xvfb.Start(); err != nil {
@@ -343,11 +369,13 @@ func startRemoteChromium(session *browseSession) error {
 			Gid: browserUser.Gid,
 		},
 	}
+	session.appendLog("info", "Launching Chromium with saved profile…")
 	if err := chromium.Start(); err != nil {
 		return fmt.Errorf("start chromium: %w", err)
 	}
 	session.Cmds = append(session.Cmds, chromium)
 
+	session.appendLog("info", "Starting live view (VNC)…")
 	x11vnc := exec.Command(
 		"x11vnc",
 		"-display", fmt.Sprintf(":%d", display),

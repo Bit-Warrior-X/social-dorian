@@ -26,15 +26,73 @@ const (
 
 func (s *browseSession) setLogin(status, message string) {
 	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
 	s.LoginStatus = status
 	s.LoginMessage = message
-	s.loginMu.Unlock()
+	s.appendLogLocked(loginLogLevel(status), message)
 }
 
-func (s *browseSession) loginSnapshot() (status, message string) {
+func (s *browseSession) appendLog(level, message string) {
 	s.loginMu.Lock()
 	defer s.loginMu.Unlock()
-	return s.LoginStatus, s.LoginMessage
+	s.appendLogLocked(level, message)
+}
+
+func (s *browseSession) appendLogLocked(level, message string) {
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return
+	}
+	if level == "" {
+		level = "info"
+	}
+	// Avoid duplicate consecutive lines (status polling / retries).
+	if n := len(s.Logs); n > 0 {
+		last := s.Logs[n-1]
+		if last.Level == level && last.Message == msg {
+			return
+		}
+	}
+	s.nextLogID++
+	s.Logs = append(s.Logs, SessionLogEntry{
+		ID:      s.nextLogID,
+		Level:   level,
+		Message: msg,
+		At:      time.Now().UTC().Format(time.RFC3339),
+	})
+	const maxSessionLogs = 200
+	if len(s.Logs) > maxSessionLogs {
+		s.Logs = append([]SessionLogEntry(nil), s.Logs[len(s.Logs)-maxSessionLogs:]...)
+	}
+
+	emitActivity(ActivityInput{
+		Source:    "account",
+		Level:     level,
+		Message:   msg,
+		AccountID: s.Account.ID,
+		ProxyID:   s.Proxy.ID,
+		Context:   fmt.Sprintf(`{"session":"%s","platform":"%s"}`, s.Token, s.Account.Platform),
+	})
+}
+
+func (s *browseSession) loginSnapshot() (status, message string, logs []SessionLogEntry) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	logs = append([]SessionLogEntry(nil), s.Logs...)
+	return s.LoginStatus, s.LoginMessage, logs
+}
+
+func loginLogLevel(status string) string {
+	switch status {
+	case loginStatusOK:
+		return "success"
+	case loginStatusFailed, loginStatusError:
+		return "error"
+	case loginStatusCheck, loginStatusVerify:
+		return "warn"
+	default:
+		return "info"
+	}
 }
 
 func (st *AccountStore) ensureLogin(session *browseSession) {
@@ -52,9 +110,8 @@ func (st *AccountStore) ensureLogin(session *browseSession) {
 		session.loginMu.Unlock()
 		return
 	}
-	session.LoginStatus = loginStatusStart
-	session.LoginMessage = "Connecting to the browser…"
 	session.loginMu.Unlock()
+	session.setLogin(loginStatusStart, "Connecting to the browser…")
 
 	go st.runFacebookLogin(session)
 }

@@ -50,12 +50,26 @@ func (s *ProxyStore) check(id int) (ProxyCheckResult, bool, error) {
 		if err := s.setStatus(id, "error"); err != nil {
 			return result, true, err
 		}
+		emitActivity(ActivityInput{
+			Source:  "proxy",
+			Level:   "error",
+			Message: fmt.Sprintf("Proxy check failed for %s (%s:%d): %s", proxy.Name, proxy.Host, proxy.Port, checkErr.Error()),
+			ProxyID: proxy.ID,
+			Context: fmt.Sprintf(`{"latencyMs":%d}`, latency),
+		})
 	} else {
 		result.OK = true
 		result.Message = "Proxy is reachable"
 		if err := s.setStatus(id, "active"); err != nil {
 			return result, true, err
 		}
+		emitActivity(ActivityInput{
+			Source:  "proxy",
+			Level:   "success",
+			Message: fmt.Sprintf("Proxy check OK for %s (%s:%d) in %dms", proxy.Name, proxy.Host, proxy.Port, latency),
+			ProxyID: proxy.ID,
+			Context: fmt.Sprintf(`{"latencyMs":%d}`, latency),
+		})
 	}
 
 	updated, _, err := s.get(id)

@@ -74,31 +74,49 @@
         </template>
       </div>
 
-      <p v-if="error" class="session__error">{{ error }}</p>
-      <p v-else-if="loginMessage && loginStatus && loginStatus !== 'skipped'" class="session__note" :class="{ 'is-bad': loginStatus === 'failed' || loginStatus === 'error' }">
-        {{ loginMessage }}
-      </p>
-
-      <div class="session__frame-wrap">
-        <div v-if="loading" class="session__loading">
-          <i class="ti ti-loader-2 spin" aria-hidden="true" />
-          Launching remote Chromium through proxy…
+      <div class="session__main">
+        <div class="session__frame-wrap">
+          <div v-if="loading" class="session__loading">
+            <i class="ti ti-loader-2 spin" aria-hidden="true" />
+            Launching remote Chromium through proxy…
+          </div>
+          <iframe
+            v-else-if="frameUrl"
+            class="session__frame"
+            :src="frameUrl"
+            :title="dialogTitle"
+            referrerpolicy="no-referrer"
+          />
+          <div v-else class="session__loading">Waiting for session…</div>
         </div>
-        <iframe
-          v-else-if="frameUrl"
-          class="session__frame"
-          :src="frameUrl"
-          :title="dialogTitle"
-          referrerpolicy="no-referrer"
-        />
-        <div v-else class="session__loading">Waiting for session…</div>
+
+        <aside class="session__logs" aria-label="Session log">
+          <div class="session__logs-head">
+            <strong>Session log</strong>
+            <span>{{ logs.length }}</span>
+          </div>
+          <div ref="logStreamEl" class="session__logs-stream">
+            <div
+              v-for="entry in logs"
+              :key="entry.id"
+              class="log-line"
+              :class="'log-line--' + entry.level"
+            >
+              <span class="log-line__time">{{ formatTime(entry.at) }}</span>
+              <span class="log-line__msg">{{ entry.message }}</span>
+            </div>
+            <p v-if="logs.length === 0" class="session__logs-empty">
+              {{ loading ? 'Waiting for launch output…' : 'No log lines yet.' }}
+            </p>
+          </div>
+        </aside>
       </div>
     </div>
   </ModalDialog>
 </template>
 
 <script setup>
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import ModalDialog from './ModalDialog.vue'
 import { getAccountSessionStatus, retryAccountLogin } from '../api/accounts'
 import { useNotify } from '../composables/useNotify'
@@ -117,7 +135,10 @@ const { notifySuccess, notifyError } = useNotify()
 
 const loginStatus = ref('')
 const loginMessage = ref('')
+const logs = ref([])
+const logStreamEl = ref(null)
 let pollTimer = 0
+let localLogSeq = 0
 
 const dialogTitle = computed(() => {
   if (!props.account) return 'Open account'
@@ -175,22 +196,77 @@ const canRetryLogin = computed(() =>
   ['failed', 'error', 'checkpoint'].includes(loginStatus.value),
 )
 
-const busyLogin = computed(() =>
-  ['starting', 'signing_in', 'verifying'].includes(loginStatus.value),
-)
+function formatTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString()
+}
+
+function pushLocalLog(level, message) {
+  const msg = String(message || '').trim()
+  if (!msg) return
+  const last = logs.value[logs.value.length - 1]
+  if (last && last.level === level && last.message === msg) return
+  localLogSeq += 1
+  logs.value = [
+    ...logs.value,
+    {
+      id: `local-${localLogSeq}`,
+      level,
+      message: msg,
+      at: new Date().toISOString(),
+    },
+  ]
+  scrollLogs()
+}
+
+function applyServerLogs(entries) {
+  if (!Array.isArray(entries) || !entries.length) return
+  logs.value = entries.map((entry) => ({
+    id: entry.id,
+    level: entry.level || 'info',
+    message: entry.message || '',
+    at: entry.at || '',
+  }))
+  scrollLogs()
+}
+
+async function scrollLogs() {
+  await nextTick()
+  const el = logStreamEl.value
+  if (el) el.scrollTop = el.scrollHeight
+}
 
 watch(
-  () => [props.open, props.session?.sessionUrl],
-  () => {
-    loginStatus.value = props.session?.loginStatus || ''
-    loginMessage.value = props.session?.loginMessage || ''
-    if (props.open && props.session?.sessionUrl && busyLogin.value) {
-      startLoginPoll()
-    } else if (!props.open || !props.session?.sessionUrl) {
+  () => [props.open, props.loading, props.error, props.session],
+  ([open, loading, error, session], prev = []) => {
+    if (!open) {
       stopLoginPoll()
+      logs.value = []
+      loginStatus.value = ''
+      loginMessage.value = ''
+      return
+    }
+
+    loginStatus.value = session?.loginStatus || ''
+    loginMessage.value = session?.loginMessage || ''
+
+    if (Array.isArray(session?.logs) && session.logs.length) {
+      applyServerLogs(session.logs)
+    } else if (loading && !(prev[1])) {
+      pushLocalLog('info', 'Launching remote Chromium through proxy…')
+    }
+
+    if (error) {
+      pushLocalLog('error', error)
+    }
+
+    if (open && session?.sessionUrl) {
+      startLoginPoll()
     }
   },
-  { immediate: true },
+  { immediate: true, deep: true },
 )
 
 async function pullLoginStatus() {
@@ -200,18 +276,18 @@ async function pullLoginStatus() {
     if (!data) return
     loginStatus.value = data.loginStatus || ''
     loginMessage.value = data.loginMessage || ''
-    if (!['starting', 'signing_in', 'verifying'].includes(loginStatus.value)) {
-      stopLoginPoll()
+    if (Array.isArray(data.logs)) {
+      applyServerLogs(data.logs)
     }
-  } catch (_) {
-    // Keep the last known status if a poll fails mid-login.
+  } catch (err) {
+    pushLocalLog('warn', err?.message || 'Could not refresh session status')
   }
 }
 
 function startLoginPoll() {
   stopLoginPoll()
   pullLoginStatus()
-  pollTimer = window.setInterval(pullLoginStatus, 2000)
+  pollTimer = window.setInterval(pullLoginStatus, 1500)
 }
 
 function stopLoginPoll() {
@@ -224,13 +300,16 @@ function stopLoginPoll() {
 async function retryLogin() {
   if (!props.session?.sessionUrl) return
   try {
+    pushLocalLog('info', 'Retrying Facebook login…')
     const data = await retryAccountLogin(props.session.sessionUrl)
     loginStatus.value = data?.loginStatus || 'starting'
     loginMessage.value = data?.loginMessage || 'Retrying login…'
+    if (Array.isArray(data?.logs)) applyServerLogs(data.logs)
     startLoginPoll()
     notifySuccess('Retrying Facebook login')
   } catch (err) {
     notifyError(err?.message || 'Could not retry login')
+    pushLocalLog('error', err?.message || 'Could not retry login')
   }
 }
 
@@ -364,33 +443,16 @@ async function copyText(value, label) {
   font-weight: 500;
 }
 
-.session__error,
-.session__note {
-  margin: 0;
-  padding: 5px 8px;
-  border-radius: var(--radius);
-  border: 0.5px solid color-mix(in srgb, var(--danger) 35%, transparent);
-  background: var(--bg-danger);
-  color: var(--danger);
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.session__note {
-  border-color: var(--hairline);
-  background: var(--panel-raised);
-  color: var(--text-dim);
-}
-
-.session__note.is-bad {
-  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
-  background: var(--bg-danger);
-  color: var(--danger);
+.session__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .session__frame-wrap {
   position: relative;
-  flex: 1 1 auto;
   min-height: 0;
   border: 0.5px solid var(--hairline);
   border-radius: 8px;
@@ -422,6 +484,83 @@ async function copyText(value, label) {
   color: var(--viper-400);
 }
 
+.session__logs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 0.5px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.session__logs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 0.5px solid var(--hairline);
+  background: var(--panel-raised);
+  flex-shrink: 0;
+}
+
+.session__logs-head strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.session__logs-head span {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.session__logs-stream {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 0;
+}
+
+.session__logs-empty {
+  margin: 0;
+  padding: 16px 12px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.log-line {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-bottom: 0.5px solid color-mix(in srgb, var(--hairline) 70%, transparent);
+}
+
+.log-line:last-child {
+  border-bottom: none;
+}
+
+.log-line__time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  padding-top: 1px;
+}
+
+.log-line__msg {
+  word-break: break-word;
+  color: var(--text-dim);
+}
+
+.log-line--success .log-line__msg { color: var(--success); }
+.log-line--warn .log-line__msg { color: var(--warn); }
+.log-line--error .log-line__msg { color: var(--danger); }
+
 .spin {
   animation: spin 0.8s linear infinite;
 }
@@ -429,6 +568,13 @@ async function copyText(value, label) {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1100px) {
+  .session__main {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(280px, 1fr) minmax(180px, 240px);
   }
 }
 

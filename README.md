@@ -66,7 +66,7 @@ API runs at `http://localhost:8080`
 | `POST /api/tasks/{id}/cancel` | Cancel a running/queued task |
 | `GET /api/credits` | Workspace credit balance |
 | `GET /api/busy-accounts` | Account IDs currently in jobs |
-| `GET /api/monitor/feed` | Global task log feed (`?after=&limit=`) |
+| `GET /api/monitor/feed` | Platform activity feed (`?after=&limit=&level=&source=&taskId=&accountId=&q=&errors=1`) |
 | `POST /api/uploads` | Upload image/video for New post tasks |
 | `GET /api/uploads/{file}` | Serve an uploaded media file |
 | `GET/POST /api/users` | List / create team users (**admin only**) |
@@ -84,6 +84,7 @@ Queued tasks run Facebook automation via `script/fb_report.py`, `fb_reply.py`, `
 - **Media:** New post can upload files to `/var/lib/dorian-browser/uploads` (or paste a URL); local uploads are attached via `fb_post.py --media`.
 - **Credits:** 1 credit per selected account is debited when the task is launched. Launch is blocked if balance is too low.
 - **Failures:** Item status is set to `failed` with error details in `task_logs` (visible in task detail and Live feed).
+- **Activity log:** Platform-wide `activity_logs` captures task worker output, account open/login steps, and proxy checks. Use **Live feed** with source/level filters (or Problems only) to diagnose what happened.
 
 ### Frontend
 

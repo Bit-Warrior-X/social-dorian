@@ -1,15 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -221,12 +224,42 @@ func (s *TaskStore) executeItem(task Task, item TaskItem) workerResult {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("DISPLAY=:%d", watchSession.Display))
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return workerResult{OK: false, Message: fmt.Sprintf("stdout pipe: %v", err)}
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return workerResult{OK: false, Message: fmt.Sprintf("stderr pipe: %v", err)}
+	}
+
+	var outputMu sync.Mutex
+	var outputBuf bytes.Buffer
+	streamDone := make(chan struct{})
+	go func() {
+		defer close(streamDone)
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			s.streamWorkerLines(task.ID, item.AccountID, stdoutPipe, "info", &outputMu, &outputBuf)
+		}()
+		go func() {
+			defer wg.Done()
+			s.streamWorkerLines(task.ID, item.AccountID, stderrPipe, "warn", &outputMu, &outputBuf)
+		}()
+		wg.Wait()
+	}()
+
+	if err := cmd.Start(); err != nil {
+		return workerResult{OK: false, Message: fmt.Sprintf("start worker: %v", err)}
+	}
 
 	done := make(chan error, 1)
-	go func() { done <- cmd.Run() }()
+	go func() {
+		done <- cmd.Wait()
+	}()
 
 	var runErr error
 	select {
@@ -237,9 +270,13 @@ func (s *TaskStore) executeItem(task Task, item TaskItem) workerResult {
 			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		}
 		runErr = fmt.Errorf("timed out after %s", workerScriptTimeout)
+		<-done
 	}
+	<-streamDone
 
-	outTail := trimWorkerOutput(stdout.String() + "\n" + stderr.String())
+	outputMu.Lock()
+	outTail := trimWorkerOutput(outputBuf.String())
+	outputMu.Unlock()
 	if runErr != nil {
 		msg := fmt.Sprintf("%s failed for %s: %v", task.Type, item.AccountName, runErr)
 		if outTail != "" {
@@ -257,6 +294,115 @@ func (s *TaskStore) executeItem(task Task, item TaskItem) workerResult {
 		msg += " — " + firstLine(outTail)
 	}
 	return workerResult{OK: true, Message: msg}
+}
+
+func (s *TaskStore) streamWorkerLines(taskID, accountID int, r io.Reader, defaultLevel string, mu *sync.Mutex, buf *bytes.Buffer) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var (
+		traceBuf   []string
+		inTrace    bool
+		traceLimit = 40
+	)
+	flushTrace := func() {
+		if !inTrace || len(traceBuf) == 0 {
+			return
+		}
+		joined := strings.Join(traceBuf, "\n")
+		if len(joined) > 3500 {
+			joined = joined[:3500] + "…"
+		}
+		s.addLog(taskID, accountID, "error", joined)
+		traceBuf = nil
+		inTrace = false
+	}
+
+	for scanner.Scan() {
+		line := strings.TrimRight(scanner.Text(), "\r")
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		mu.Lock()
+		buf.WriteString(trimmed)
+		buf.WriteByte('\n')
+		mu.Unlock()
+
+		lower := strings.ToLower(trimmed)
+		if strings.HasPrefix(trimmed, "Traceback ") || strings.HasPrefix(trimmed, "Traceback (") {
+			flushTrace()
+			inTrace = true
+			traceBuf = []string{trimmed}
+			continue
+		}
+		if inTrace {
+			traceBuf = append(traceBuf, trimmed)
+			isFrame := strings.HasPrefix(trimmed, "File ") || strings.HasPrefix(strings.TrimLeft(trimmed, " \t"), "File ")
+			isException := strings.Contains(trimmed, "Error:") || strings.Contains(trimmed, "Exception:") ||
+				strings.HasSuffix(trimmed, "Error") || strings.Contains(lower, "exception:")
+			if (!isFrame && isException) || len(traceBuf) >= traceLimit {
+				flushTrace()
+			}
+			continue
+		}
+
+		level, message := classifyWorkerLogLine(trimmed, defaultLevel)
+		if message == "" {
+			continue
+		}
+		s.addLog(taskID, accountID, level, message)
+	}
+	flushTrace()
+}
+
+func classifyWorkerLogLine(line, defaultLevel string) (level, message string) {
+	msg := line
+	level = defaultLevel
+
+	// Typical: "2026-09-11 02:24:13,822 - INFO - Comment sent"
+	if idx := strings.Index(line, " - "); idx >= 0 {
+		rest := line[idx+3:]
+		if j := strings.Index(rest, " - "); j >= 0 {
+			lvl := strings.ToUpper(strings.TrimSpace(rest[:j]))
+			body := strings.TrimSpace(rest[j+3:])
+			if body != "" {
+				msg = body
+			}
+			switch lvl {
+			case "ERROR", "CRITICAL", "FATAL":
+				level = "error"
+			case "WARNING", "WARN":
+				level = "warn"
+			case "INFO", "DEBUG":
+				level = "info"
+			}
+		}
+	}
+
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(lower, "traceback"),
+		strings.Contains(lower, "exception"),
+		strings.HasPrefix(lower, "error"):
+		level = "error"
+	case strings.Contains(lower, "warning"):
+		if level != "error" {
+			level = "warn"
+		}
+	case strings.Contains(lower, "success"),
+		strings.Contains(lower, "confirmed"),
+		strings.Contains(lower, "posted"),
+		strings.Contains(lower, "comment sent"):
+		if level == "info" {
+			level = "success"
+		}
+	}
+
+	if len(msg) > 2000 {
+		msg = msg[:2000] + "…"
+	}
+	return level, msg
 }
 
 func buildWorkerArgs(task Task, account workerAccount, workDir, profileDir string, useProxy bool) ([]string, error) {

@@ -71,7 +71,7 @@ const navGroups = [
       { to: '/tasks', icon: 'ti-list-check', label: 'Tasks / Campaigns' },
       { to: '/tasks/active', icon: 'ti-player-play', label: 'Active jobs' },
       { to: '/tasks/history', icon: 'ti-history', label: 'History' },
-      { to: '/monitor', icon: 'ti-activity', label: 'Live feed' },
+      { to: '/monitor', icon: 'ti-activity', label: 'Activity' },
     ],
   },
 ]

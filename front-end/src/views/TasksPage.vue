@@ -176,8 +176,23 @@
           <p v-if="detail.content.linkUrl" class="mono">{{ detail.content.linkUrl }}</p>
           <p v-if="detail.content.mediaUrl" class="mono">{{ detail.content.mediaUrl }}</p>
         </div>
+        <div class="log-toolbar">
+          <strong>Logs</strong>
+          <select v-model="detailLevelFilter">
+            <option value="">All levels</option>
+            <option value="error">Errors</option>
+            <option value="warn">Warnings</option>
+            <option value="success">Success</option>
+            <option value="info">Info</option>
+          </select>
+        </div>
         <div class="log-stream">
-          <div v-for="entry in detail.logs || []" :key="entry.id" class="log" :class="'log--' + entry.level">
+          <div
+            v-for="entry in detailLogs"
+            :key="entry.id"
+            class="log"
+            :class="'log--' + entry.level"
+          >
             <span class="log__time">{{ formatTime(entry.createdAt) }}</span>
             <span>
               <template v-if="liveViewHref(entry.message)">
@@ -189,7 +204,7 @@
               <template v-else>{{ entry.message }}</template>
             </span>
           </div>
-          <p v-if="!(detail.logs || []).length" class="empty">No logs yet.</p>
+          <p v-if="!detailLogs.length" class="empty">No logs yet.</p>
         </div>
       </div>
     </ModalDialog>
@@ -199,7 +214,9 @@
       :title="watchTitle"
       :frame-url="watchUrl"
       :waiting="watchWaiting"
+      :task-id="watchTaskId"
       @close="closeWatch"
+      @frame-url="onWatchFrameUrl"
     />
   </div>
 </template>
@@ -244,6 +261,7 @@ const taskModalAccountIds = ref([])
 const taskSaving = ref(false)
 const taskError = ref('')
 const detail = ref(null)
+const detailLevelFilter = ref('')
 const watchOpen = ref(false)
 const watchUrl = ref('')
 const watchTitle = ref('Live browser')
@@ -271,6 +289,12 @@ const filteredTasks = computed(() => {
     if (statusFilter.value && task.status !== statusFilter.value) return false
     return true
   })
+})
+
+const detailLogs = computed(() => {
+  const rows = Array.isArray(detail.value?.logs) ? detail.value.logs : []
+  if (!detailLevelFilter.value) return rows
+  return rows.filter((entry) => entry.level === detailLevelFilter.value)
 })
 
 const {
@@ -319,6 +343,14 @@ function closeWatch() {
   watchWaiting.value = false
   watchUrl.value = ''
   watchTaskId.value = 0
+}
+
+function onWatchFrameUrl(url) {
+  const href = String(url || '').trim()
+  if (!href) return
+  watchUrl.value = href
+  watchWaiting.value = false
+  if (watchTaskId.value) clearPendingWatchTask(watchTaskId.value)
 }
 
 function openWatchFromHref(href, task = null) {
@@ -459,6 +491,7 @@ async function launchTask(payload) {
 }
 
 async function openDetail(task) {
+  detailLevelFilter.value = ''
   try {
     detail.value = await getTask(task.id)
   } catch (err) {
@@ -726,6 +759,22 @@ th {
   white-space: pre-wrap;
   line-height: 1.45;
   word-break: break-word;
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.log-toolbar strong {
+  font-size: 13px;
+}
+
+.log-toolbar select {
+  width: 140px;
 }
 
 .log-stream {
