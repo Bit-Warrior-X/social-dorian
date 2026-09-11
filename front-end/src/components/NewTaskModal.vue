@@ -547,6 +547,8 @@ const props = defineProps({
   initialType: { type: String, default: 'report' },
   initialPlatform: { type: String, default: '' },
   initialAccountIds: { type: Array, default: () => [] },
+  initialTargetUrl: { type: String, default: '' },
+  initialReplyText: { type: String, default: '' },
   saving: { type: Boolean, default: false },
   error: { type: String, default: '' },
 })
@@ -847,9 +849,9 @@ function resetWizard() {
   form.type = props.initialType || 'report'
   form.platform = bestDefaultPlatform()
   form.title = ''
-  form.targetUrl = ''
+  form.targetUrl = props.initialTargetUrl || ''
   form.headline = ''
-  form.text = ''
+  form.text = props.initialReplyText || ''
   form.linkUrl = ''
   form.mediaUrl = ''
   form.delayMinSec = 5

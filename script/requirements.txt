@@ -1,2 +1,10 @@
 # Python deps for Social Dorian Facebook workers (fb_*.py)
+selenium
+requests
+pandas
+openpyxl
+webdriver-manager 
+socksio 
+beautifulsoup4
+imap-tools
 selenium>=4.8,<5

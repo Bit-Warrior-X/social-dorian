@@ -67,6 +67,10 @@ API runs at `http://localhost:8080`
 | `GET /api/credits` | Workspace credit balance |
 | `GET /api/busy-accounts` | Account IDs currently in jobs |
 | `GET /api/monitor/feed` | Platform activity feed (`?after=&limit=&level=&source=&taskId=&accountId=&q=&errors=1`) |
+| `GET/POST /api/posts` | Tracked posts for analysis / reply planning |
+| `POST /api/posts/{id}/analyze` | Re-run post analysis + reply suggestions |
+| `POST /api/posts/suggest` | Analyze pasted text without saving |
+| `GET /api/engagements` | Per-account post/reply/report history from jobs |
 | `POST /api/uploads` | Upload image/video for New post tasks |
 | `GET /api/uploads/{file}` | Serve an uploaded media file |
 | `GET/POST /api/users` | List / create team users (**admin only**) |

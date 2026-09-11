@@ -5,31 +5,98 @@
         <h1>{{ title }}</h1>
         <p>{{ description }}</p>
       </div>
-      <button class="btn btn-primary" type="button" @click="openNewTask()">
-        <i class="ti ti-plus" aria-hidden="true" />
-        New task
-      </button>
+      <div class="page-head__actions">
+        <RouterLink v-if="mode === 'history'" class="btn" to="/tasks">
+          <i class="ti ti-list-check" aria-hidden="true" />
+          All campaigns
+        </RouterLink>
+        <RouterLink v-if="mode === 'all'" class="btn" to="/tasks/history">
+          <i class="ti ti-history" aria-hidden="true" />
+          View history
+        </RouterLink>
+        <button
+          v-if="mode !== 'history'"
+          class="btn btn-primary"
+          type="button"
+          @click="openNewTask()"
+        >
+          <i class="ti ti-plus" aria-hidden="true" />
+          New task
+        </button>
+      </div>
     </div>
 
     <p v-if="loadError" class="banner">{{ loadError }}</p>
 
+    <div v-if="mode === 'all'" class="launch-strip">
+      <button
+        v-for="type in TASK_TYPES"
+        :key="type.value"
+        class="launch-card"
+        type="button"
+        @click="openNewTask(type.value)"
+      >
+        <i class="ti" :class="type.icon" aria-hidden="true" />
+        <strong>{{ type.label }}</strong>
+        <span>{{ type.description }}</span>
+      </button>
+    </div>
+
     <div class="stats">
-      <div class="stat">
-        <div class="stat__label">Total</div>
-        <div class="stat__value">{{ tasks.length }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat__label">Running</div>
-        <div class="stat__value is-live">{{ countByStatus('running') + countByStatus('queued') }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat__label">Completed</div>
-        <div class="stat__value is-success">{{ countByStatus('completed') }}</div>
-      </div>
-      <div class="stat">
-        <div class="stat__label">Failed</div>
-        <div class="stat__value is-danger">{{ countByStatus('failed') }}</div>
-      </div>
+      <template v-if="mode === 'history'">
+        <div class="stat">
+          <div class="stat__label">Finished</div>
+          <div class="stat__value">{{ filteredTasks.length }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Completed</div>
+          <div class="stat__value is-success">{{ countFilteredStatus('completed') }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Failed</div>
+          <div class="stat__value is-danger">{{ countFilteredStatus('failed') }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Cancelled</div>
+          <div class="stat__value">{{ countFilteredStatus('cancelled') }}</div>
+        </div>
+      </template>
+      <template v-else-if="mode === 'active'">
+        <div class="stat">
+          <div class="stat__label">In flight</div>
+          <div class="stat__value is-live">{{ filteredTasks.length }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Running</div>
+          <div class="stat__value is-live">{{ countFilteredStatus('running') }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Queued</div>
+          <div class="stat__value">{{ countFilteredStatus('queued') + countFilteredStatus('pending') }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Accounts busy</div>
+          <div class="stat__value">{{ busyAccountEstimate }}</div>
+        </div>
+      </template>
+      <template v-else>
+        <div class="stat">
+          <div class="stat__label">Campaigns</div>
+          <div class="stat__value">{{ tasks.length }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Active now</div>
+          <div class="stat__value is-live">{{ countByStatus('running') + countByStatus('queued') }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Completed</div>
+          <div class="stat__value is-success">{{ countByStatus('completed') }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat__label">Failed</div>
+          <div class="stat__value is-danger">{{ countByStatus('failed') }}</div>
+        </div>
+      </template>
     </div>
 
     <div class="filters">
@@ -39,9 +106,13 @@
           {{ type.label }}
         </option>
       </select>
-      <select v-model="statusFilter">
-        <option value="">All statuses</option>
-        <option v-for="status in TASK_STATUSES" :key="status.value" :value="status.value">
+      <select v-if="mode !== 'active'" v-model="statusFilter">
+        <option value="">{{ mode === 'history' ? 'All finished statuses' : 'All statuses' }}</option>
+        <option
+          v-for="status in statusFilterOptions"
+          :key="status.value"
+          :value="status.value"
+        >
           {{ status.label }}
         </option>
       </select>
@@ -59,7 +130,7 @@
                 <th>Accounts</th>
                 <th>Status</th>
                 <th>Progress</th>
-                <th>Created</th>
+                <th>{{ mode === 'history' ? 'Finished' : 'Created' }}</th>
                 <th class="col-actions">Actions</th>
               </tr>
             </thead>
@@ -101,7 +172,9 @@
                 <td>
                   <div class="task-cell">
                     <span>{{ task.createdBy || '—' }}</span>
-                    <span class="sub">{{ formatWhen(task.createdAt) }}</span>
+                    <span class="sub">
+                      {{ formatWhen(mode === 'history' ? (task.finishedAt || task.createdAt) : task.createdAt) }}
+                    </span>
                   </div>
                 </td>
                 <td class="actions">
@@ -132,7 +205,7 @@
             </tbody>
           </table>
         </div>
-        <p v-if="filteredTasks.length === 0" class="empty">No tasks match your filters.</p>
+        <p v-if="filteredTasks.length === 0" class="empty">{{ emptyMessage }}</p>
         <PaginationBar
           v-model:page="page"
           v-model:page-size="pageSize"
@@ -223,7 +296,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import ModalDialog from '../components/ModalDialog.vue'
 import NewTaskModal from '../components/NewTaskModal.vue'
 import PaginationBar from '../components/PaginationBar.vue'
@@ -271,15 +344,32 @@ let pollTimer = 0
 
 const title = computed(() => {
   if (props.mode === 'active') return 'Active jobs'
-  if (props.mode === 'history') return 'Task history'
+  if (props.mode === 'history') return 'History'
   return 'Tasks / Campaigns'
 })
 
 const description = computed(() => {
-  if (props.mode === 'active') return 'Queued and running jobs across your accounts'
-  if (props.mode === 'history') return 'Completed, failed, and cancelled jobs'
-  return 'Create report, reply, post, browse, and login-test jobs'
+  if (props.mode === 'active') return 'Only jobs that are queued or running right now'
+  if (props.mode === 'history') return 'Finished work only — completed, failed, and cancelled campaigns'
+  return 'Plan and launch report, reply, post, browse, and login-test campaigns'
 })
+
+const emptyMessage = computed(() => {
+  if (props.mode === 'history') return 'No finished jobs yet. Completed and failed campaigns will land here.'
+  if (props.mode === 'active') return 'Nothing running. Launch a campaign from Tasks / Campaigns.'
+  return 'No campaigns yet. Pick a launch type above to get started.'
+})
+
+const statusFilterOptions = computed(() => {
+  if (props.mode === 'history') {
+    return TASK_STATUSES.filter((status) => ['completed', 'failed', 'cancelled'].includes(status.value))
+  }
+  return TASK_STATUSES
+})
+
+const busyAccountEstimate = computed(() =>
+  filteredTasks.value.reduce((sum, task) => sum + (Number(task.accountCount) || 0), 0),
+)
 
 const filteredTasks = computed(() => {
   return tasks.value.filter((task) => {
@@ -290,6 +380,10 @@ const filteredTasks = computed(() => {
     return true
   })
 })
+
+function countFilteredStatus(status) {
+  return filteredTasks.value.filter((task) => task.status === status).length
+}
 
 const detailLogs = computed(() => {
   const rows = Array.isArray(detail.value?.logs) ? detail.value.logs : []
@@ -544,10 +638,57 @@ defineExpose({ openNewTask })
   gap: 12px;
 }
 
+.page-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .page-head p {
   margin: 4px 0 0;
   font-size: 13px;
   color: var(--text-dim);
+}
+
+.launch-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.launch-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 0.5px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.launch-card:hover {
+  border-color: color-mix(in srgb, var(--viper-500) 45%, transparent);
+}
+
+.launch-card .ti {
+  font-size: 18px;
+  color: var(--viper-400);
+}
+
+.launch-card strong {
+  font-size: 13px;
+}
+
+.launch-card span {
+  font-size: 12px;
+  color: var(--text-faint);
+  line-height: 1.35;
 }
 
 .banner {

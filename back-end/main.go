@@ -44,6 +44,12 @@ func main() {
 		log.Fatalf("failed to prepare task tables: %v", err)
 	}
 
+	postStore := newPostStore(db)
+	if err := postStore.ensureSchema(); err != nil {
+		log.Fatalf("failed to prepare post tables: %v", err)
+	}
+	taskStore.setPostStore(postStore)
+
 	activityStore := newActivityStore(db)
 	if err := activityStore.ensureSchema(); err != nil {
 		log.Fatalf("failed to prepare activity log tables: %v", err)
@@ -74,6 +80,9 @@ func main() {
 	mux.HandleFunc("/api/credits", taskStore.handleCredits)
 	mux.HandleFunc("/api/busy-accounts", taskStore.handleBusyAccounts)
 	mux.HandleFunc("/api/monitor/feed", activityStore.handleFeed)
+	mux.HandleFunc("/api/posts", postStore.handlePosts)
+	mux.HandleFunc("/api/posts/", postStore.handlePostByID)
+	mux.HandleFunc("/api/engagements", postStore.handleEngagements)
 	mux.HandleFunc("/api/uploads", handleUploads)
 	mux.HandleFunc("/api/uploads/", handleUploads)
 	mux.HandleFunc("/api/users", authStore.handleUsers)

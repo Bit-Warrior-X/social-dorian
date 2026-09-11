@@ -31,6 +31,10 @@
     </nav>
 
     <div class="sidebar__footer">
+      <RouterLink to="/docs" class="navitem" :class="{ active: route.path === '/docs' }">
+        <i class="ti ti-book" aria-hidden="true" />
+        Docs
+      </RouterLink>
       <RouterLink to="/settings" class="navitem" :class="{ active: route.path === '/settings' }">
         <i class="ti ti-settings" aria-hidden="true" />
         Settings
@@ -71,6 +75,7 @@ const navGroups = [
       { to: '/tasks', icon: 'ti-list-check', label: 'Tasks / Campaigns' },
       { to: '/tasks/active', icon: 'ti-player-play', label: 'Active jobs' },
       { to: '/tasks/history', icon: 'ti-history', label: 'History' },
+      { to: '/posts', icon: 'ti-article', label: 'Post management' },
       { to: '/monitor', icon: 'ti-activity', label: 'Activity' },
     ],
   },

@@ -79,6 +79,7 @@ type TaskInput struct {
 
 type TaskStore struct {
 	db      *sql.DB
+	posts   *PostStore
 	mu      sync.Mutex
 	running map[int]bool
 }
@@ -88,6 +89,10 @@ func newTaskStore(db *sql.DB) *TaskStore {
 		db:      db,
 		running: map[int]bool{},
 	}
+}
+
+func (s *TaskStore) setPostStore(posts *PostStore) {
+	s.posts = posts
 }
 
 func (s *TaskStore) ensureSchema() error {
@@ -875,11 +880,13 @@ func (s *TaskStore) runTask(taskID int) {
 				UPDATE task_items SET status = 'success', message = ?, finished_at = UTC_TIMESTAMP()
 				WHERE id = ?`, result.Message, item.ID)
 			s.addLog(taskID, item.AccountID, "success", result.Message)
+			s.recordTaskEngagement(task, item, result, "success")
 		} else {
 			_, _ = s.db.Exec(`
 				UPDATE task_items SET status = 'failed', message = ?, finished_at = UTC_TIMESTAMP()
 				WHERE id = ?`, result.Message, item.ID)
 			s.addLog(taskID, item.AccountID, "error", result.Message)
+			s.recordTaskEngagement(task, item, result, "failed")
 		}
 	}
 
@@ -910,6 +917,40 @@ func (s *TaskStore) addLog(taskID, accountID int, level, message string) {
 		Message:   msg,
 		TaskID:    taskID,
 		AccountID: accountID,
+	})
+}
+
+func (s *TaskStore) recordTaskEngagement(task Task, item TaskItem, result workerResult, status string) {
+	if s.posts == nil {
+		return
+	}
+	kind := ""
+	switch task.Type {
+	case "post":
+		kind = "post"
+	case "reply":
+		kind = "reply"
+	case "report":
+		kind = "report"
+	case "browse":
+		kind = "browse"
+	case "login_test":
+		kind = "login"
+	default:
+		return
+	}
+	content := strings.TrimSpace(task.Content.Text)
+	if content == "" {
+		content = strings.TrimSpace(result.Message)
+	}
+	s.posts.recordEngagement(EngagementInput{
+		AccountID:  item.AccountID,
+		Kind:       kind,
+		TargetURL:  task.TargetURL,
+		Content:    content,
+		TaskID:     task.ID,
+		TaskItemID: item.ID,
+		Status:     status,
 	})
 }
 

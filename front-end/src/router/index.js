@@ -10,6 +10,8 @@ import MonitorPage from '../views/MonitorPage.vue'
 import ProxiesPage from '../views/ProxiesPage.vue'
 import SettingsPage from '../views/SettingsPage.vue'
 import TasksPage from '../views/TasksPage.vue'
+import PostsPage from '../views/PostsPage.vue'
+import DocsPage from '../views/DocsPage.vue'
 
 const routes = [
   {
@@ -38,7 +40,9 @@ const routes = [
       },
       { path: '/tasks/active', name: 'tasks-active', component: TasksPage, props: { mode: 'active' } },
       { path: '/tasks/history', name: 'tasks-history', component: TasksPage, props: { mode: 'history' } },
+      { path: '/posts', name: 'posts', component: PostsPage },
       { path: '/monitor', name: 'monitor', component: MonitorPage },
+      { path: '/docs', name: 'docs', component: DocsPage },
       { path: '/settings', name: 'settings', component: SettingsPage },
     ],
   },
