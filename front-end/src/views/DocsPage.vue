@@ -417,7 +417,7 @@ watch(
 
 <style scoped>
 .docs {
-  --docs-height: calc(100vh - 40px);
+  --docs-height: calc(100vh - 2.5rem);
   display: flex;
   flex-direction: column;
   gap: 12px;
